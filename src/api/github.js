@@ -4,7 +4,7 @@ const { authenticateToken } = require('./auth');
 const router = express.Router();
 
 const GITHUB_API_BASE = 'https://api.github.com';
-const GITHUB_USERNAME = 'shilohrobinson'; // Update with actual username
+const GITHUB_USERNAME = 'Shilohr'; // Update with actual username
 
 // Cache GitHub repositories
 router.post('/sync', authenticateToken, async (req, res) => {
