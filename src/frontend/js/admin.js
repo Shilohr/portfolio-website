@@ -276,15 +276,21 @@ class AuthManager {
     }
 
     async checkProtectedAccess() {
+        // Add a small delay to ensure cookies are properly set
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         try {
             const response = await utils.apiRequest('/auth/profile');
             this.user = response.user;
         } catch (error) {
             console.error('Authentication check failed:', error);
-            utils.showAlert('Session expired. Please login again.', 'warning');
-            setTimeout(() => {
-                window.location.href = 'login.html';
-            }, 1500);
+            // Only redirect if we're not already on login page
+            if (!window.location.pathname.includes('login.html')) {
+                utils.showAlert('Session expired. Please login again.', 'warning');
+                setTimeout(() => {
+                    window.location.href = 'login.html';
+                }, 1500);
+            }
         }
     }
 

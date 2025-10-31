@@ -286,7 +286,7 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
             res.cookie('portfolio_token', result.token, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
+                sameSite: 'lax',
                 maxAge: 24 * 60 * 60 * 1000, // 24 hours
                 path: '/'
             });
@@ -374,14 +374,14 @@ router.post('/logout', async (req, res) => {
             path: '/',
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict'
+            sameSite: 'lax'
         });
 
         res.clearCookie('_csrf', {
             path: '/',
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict'
+            sameSite: 'lax'
         });
 
         sendSuccess(res, null, 'Logout successful');
