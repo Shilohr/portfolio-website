@@ -294,7 +294,17 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
             sendSuccess(res, result.user, 'Login successful');
             
         } catch (error) {
-            await connection.rollback();
+            // Only rollback if connection exists and has a transaction
+            if (connection && typeof connection.rollback === 'function') {
+                try {
+                    await connection.rollback();
+                } catch (rollbackError) {
+                    logger.error('Failed to rollback transaction', req, { 
+                        rollbackError: rollbackError.message,
+                        originalError: error.message
+                    });
+                }
+            }
             throw error;
         } finally {
             // Only release if we got the connection from a pool

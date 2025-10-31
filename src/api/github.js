@@ -1,7 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const axios = require('axios');
-const { authenticateToken } = require('./auth');
+const { authenticateToken, requireAdmin } = require('./auth');
 const { logger } = require('./utils/logger');
 const { sendError, sendSuccess, createErrorResponse } = require('./utils/errorHandler');
 const { commonValidations, handleValidationErrors, sanitizers } = require('./utils/validation');
@@ -43,20 +43,29 @@ const validateSync = [
     commonValidations.githubUsername
 ];
 
-// Cache GitHub repositories (optional authentication, no CSRF required for read-only operation)
-router.post('/sync', (req, res, next) => {
-    // Bypass CSRF for GitHub sync as it's a read-only operation fetching public data
-    next();
-}, githubRateLimiter, validateSync, handleValidationErrors, async (req, res) => {
+// Cache GitHub repositories (requires authentication and admin privileges)
+router.post('/sync', [
+    authenticateToken,
+    requireAdmin,
+    githubRateLimiter,
+    validateSync,
+    handleValidationErrors
+], async (req, res) => {
     const db = req.db;
-        const { force = false, username } = req.body;
+    const { force = false, username } = req.body;
         
         // Use provided username or default
         const targetUsername = username && username.trim() ? username.trim() : GITHUB_USERNAME;
         
         try {
+            // Log the sync attempt for security auditing
+            logger.security('GITHUB_SYNC_ATTEMPT', req, 'medium', {
+                targetUsername,
+                force,
+                userAgent: req.get('User-Agent')
+            });
         
-        // Prepare headers with optional authentication
+            // Prepare headers with optional authentication
         const headers = {
             'Accept': 'application/vnd.github.v3+json',
             'User-Agent': 'Portfolio-Website'
@@ -80,6 +89,46 @@ router.post('/sync', (req, res, next) => {
         });
 
         const repos = response.data;
+        
+        // Validate and sanitize repository payload
+        if (!Array.isArray(repos)) {
+            return sendError(res, 'EXTERNAL_API_ERROR', 'Invalid response format from GitHub API');
+        }
+        
+        // Limit number of repositories to prevent database bloat
+        const MAX_REPOS = 100;
+        if (repos.length > MAX_REPOS) {
+            logger.warn('GitHub API returned too many repositories, truncating', req, { 
+                totalRepos: repos.length, 
+                maxAllowed: MAX_REPOS 
+            });
+            repos.splice(MAX_REPOS);
+        }
+        
+        // Validate each repository object structure
+        const sanitizedRepos = repos.filter(repo => {
+            return repo && 
+                   typeof repo === 'object' &&
+                   typeof repo.id === 'number' &&
+                   typeof repo.name === 'string' &&
+                   typeof repo.full_name === 'string' &&
+                   typeof repo.description === 'string' &&
+                   typeof repo.html_url === 'string' &&
+                   typeof repo.stargazers_count === 'number' &&
+                   typeof repo.language === 'string';
+        });
+        
+        if (sanitizedRepos.length === 0) {
+            return sendError(res, 'EXTERNAL_API_ERROR', 'No valid repositories found in GitHub response');
+        }
+        
+        if (sanitizedRepos.length !== repos.length) {
+            logger.warn('Some repositories were filtered out due to invalid structure', req, {
+                originalCount: repos.length,
+                validCount: sanitizedRepos.length
+            });
+        }
+        
         // Use transaction manager for batch operations
         const transactionManager = createTransactionManager(db);
         
@@ -87,40 +136,63 @@ router.post('/sync', (req, res, next) => {
             let syncedCount = 0;
             const operations = [];
 
-            for (const repo of repos) {
+            for (const repo of sanitizedRepos) {
+                // Validate required fields
+                if (!repo.id || !repo.name || !repo.full_name) {
+                    logger.warn('Skipping repository with missing required fields', req, { 
+                        repo: repo.name || 'unknown' 
+                    });
+                    continue;
+                }
+                
+                // Sanitize and limit field lengths
+                const sanitizedRepo = {
+                    id: repo.id.toString(),
+                    name: (repo.name || '').substring(0, 255),
+                    full_name: (repo.full_name || '').substring(0, 255),
+                    description: (repo.description || '').substring(0, 1000),
+                    html_url: (repo.html_url || '').substring(0, 500),
+                    stargazers_count: Math.max(0, parseInt(repo.stargazers_count) || 0),
+                    forks_count: Math.max(0, parseInt(repo.forks_count) || 0),
+                    language: (repo.language || '').substring(0, 100),
+                    topics: Array.isArray(repo.topics) ? repo.topics.slice(0, 20).map(t => String(t).substring(0, 50)) : [],
+                    private: Boolean(repo.private),
+                    fork: Boolean(repo.fork)
+                };
+                
                 // Check if repo already exists
                 const [existing] = await connection.execute(
                     'SELECT id FROM github_repos WHERE repo_id = ?',
-                    [repo.id.toString()]
+                    [sanitizedRepo.id]
                 );
 
                 if (existing.length === 0) {
                     // Insert new repository
                     operations.push({
-                        name: `insert_repo_${repo.id}`,
+                        name: `insert_repo_${sanitizedRepo.id}`,
                         query: `
                             INSERT INTO github_repos 
                             (repo_id, name, full_name, description, html_url, stars, forks, language, topics, is_private, is_fork)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         `,
                         params: [
-                            repo.id.toString(),
-                            repo.name,
-                            repo.full_name,
-                            repo.description,
-                            repo.html_url,
-                            repo.stargazers_count,
-                            repo.forks_count,
-                            repo.language,
-                            JSON.stringify(repo.topics || []),
-                            repo.private,
-                            repo.fork
+                            sanitizedRepo.id,
+                            sanitizedRepo.name,
+                            sanitizedRepo.full_name,
+                            sanitizedRepo.description,
+                            sanitizedRepo.html_url,
+                            sanitizedRepo.stargazers_count,
+                            sanitizedRepo.forks_count,
+                            sanitizedRepo.language,
+                            JSON.stringify(sanitizedRepo.topics),
+                            sanitizedRepo.private,
+                            sanitizedRepo.fork
                         ]
                     });
                 } else {
                     // Update existing repository
                     operations.push({
-                        name: `update_repo_${repo.id}`,
+                        name: `update_repo_${sanitizedRepo.id}`,
                         query: `
                             UPDATE github_repos 
                             SET name = ?, full_name = ?, description = ?, html_url = ?, 
@@ -129,17 +201,17 @@ router.post('/sync', (req, res, next) => {
                             WHERE repo_id = ?
                         `,
                         params: [
-                            repo.name,
-                            repo.full_name,
-                            repo.description,
-                            repo.html_url,
-                            repo.stargazers_count,
-                            repo.forks_count,
-                            repo.language,
-                            JSON.stringify(repo.topics || []),
-                            repo.private,
-                            repo.fork,
-                            repo.id.toString()
+                            sanitizedRepo.name,
+                            sanitizedRepo.full_name,
+                            sanitizedRepo.description,
+                            sanitizedRepo.html_url,
+                            sanitizedRepo.stargazers_count,
+                            sanitizedRepo.forks_count,
+                            sanitizedRepo.language,
+                            JSON.stringify(sanitizedRepo.topics),
+                            sanitizedRepo.private,
+                            sanitizedRepo.fork,
+                            sanitizedRepo.id
                         ]
                     });
                 }
@@ -168,7 +240,7 @@ router.post('/sync', (req, res, next) => {
         logger.audit('GITHUB_SYNC', req, 'repositories', { 
             userId,
             syncedCount,
-            totalRepos: repos.length,
+            totalRepos: sanitizedRepos.length,
             githubUsername: targetUsername,
             authenticated: !!req.user
         });
@@ -178,7 +250,7 @@ router.post('/sync', (req, res, next) => {
         
         sendSuccess(res, {
             syncedCount,
-            totalRepos: repos.length,
+            totalRepos: sanitizedRepos.length,
             githubUsername: targetUsername
         }, 'GitHub repositories synchronized successfully');
 
@@ -186,7 +258,8 @@ router.post('/sync', (req, res, next) => {
         logger.error('GitHub sync failed', req, { 
             error: error.message,
             stack: error.stack,
-            githubUsername: targetUsername
+            githubUsername: targetUsername,
+            userId: req.user ? req.user.userId : null
         });
         
         // Handle specific GitHub API errors with standardized format
@@ -261,7 +334,6 @@ router.get('/repos', validateRepoQuery, handleValidationErrors,
     }), 
 async (req, res) => {
     try {
-
         const db = req.db;
         const { page = 1, limit = 20, language, sort = 'stars' } = req.query;
         
@@ -278,8 +350,12 @@ async (req, res) => {
             params.push(language.trim());
         }
 
-        const sortClause = sort === 'stars' ? 'ORDER BY stars DESC' : 
-                          sort === 'updated' ? 'ORDER BY updated_at DESC' : 
+        // Validate sort parameter to prevent SQL injection
+        const validSortOptions = ['stars', 'updated', 'name'];
+        const sanitizedSort = validSortOptions.includes(sort) ? sort : 'stars';
+        
+        const sortClause = sanitizedSort === 'stars' ? 'ORDER BY stars DESC' : 
+                          sanitizedSort === 'updated' ? 'ORDER BY updated_at DESC' : 
                           'ORDER BY name ASC';
 
         const [repos] = await db.execute(`
@@ -321,7 +397,6 @@ const validateRepoId = [
 // Get repository details
 router.get('/repos/:repoId', validateRepoId, handleValidationErrors, async (req, res) => {
     try {
-
         const { repoId } = req.params;
         const db = req.db;
 
@@ -331,12 +406,12 @@ router.get('/repos/:repoId', validateRepoId, handleValidationErrors, async (req,
         }
 
         const [repos] = await db.execute(
-            'SELECT * FROM github_repos WHERE repo_id = ?',
+            'SELECT * FROM github_repos WHERE repo_id = ? AND is_private = FALSE',
             [repoId.trim()]
         );
 
         if (repos.length === 0) {
-            return sendError(res, 'NOT_FOUND', 'Repository not found');
+            return sendError(res, 'NOT_FOUND', 'Repository not found or access denied');
         }
 
         sendSuccess(res, { repository: repos[0] }, 'Repository fetched successfully');

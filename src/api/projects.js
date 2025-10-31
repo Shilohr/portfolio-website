@@ -219,10 +219,11 @@ router.get('/:id', [
 
 // Create project (protected)
 router.post('/', authenticateToken, validateProject, handleValidationErrors, async (req, res) => {
-    try {
+    // Extract variables outside try block for error logging access
+    const { title, description, github_url, live_url, featured = false, status = 'active', technologies = [] } = req.body;
+    const db = req.db;
 
-        const { title, description, github_url, live_url, featured = false, status = 'active', technologies = [] } = req.body;
-        const db = req.db;
+    try {
         
         // Sanitize technologies array using standardized sanitizer
         const sanitizedTechnologies = sanitizers.sanitizeStringArray(technologies, 50);
@@ -283,11 +284,12 @@ router.post('/', authenticateToken, validateProject, handleValidationErrors, asy
 
 // Update project (protected)
 router.put('/:id', authenticateToken, validateProject, checkProjectOwnership, handleValidationErrors, async (req, res) => {
-    try {
+    // Extract variables outside try block for error logging access
+    const { id } = req.params;
+    const { title, description, github_url, live_url, featured, status, technologies = [] } = req.body;
+    const db = req.db;
 
-        const { id } = req.params;
-        const { title, description, github_url, live_url, featured, status, technologies = [] } = req.body;
-        const db = req.db;
+    try {
         
         // Sanitize technologies array using standardized sanitizer
         const sanitizedTechnologies = sanitizers.sanitizeStringArray(technologies, 50);
@@ -352,9 +354,11 @@ router.put('/:id', authenticateToken, validateProject, checkProjectOwnership, ha
 
 // Delete project (protected)
 router.delete('/:id', authenticateToken, checkProjectOwnership, handleValidationErrors, async (req, res) => {
+    // Extract variables outside try block for error logging access
+    const { id } = req.params;
+    const db = req.db;
+
     try {
-        const { id } = req.params;
-        const db = req.db;
 
         // Get project for audit (already fetched in checkProjectOwnership)
         const project = req.project;

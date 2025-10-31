@@ -38,6 +38,14 @@
       "ip_address": "172.20.0.1",
       "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
       "id": 3
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$8Uiv46sRB8.MgdbGi8OtsO5qdRewuYlrmyo0gS9l.lCU654w1xwQO",
+      "expires_at": "2025-11-01T21:39:34.728Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 4
     }
   ],
   "audit_log": [
@@ -145,6 +153,13 @@
       "ip_address": "172.20.0.1",
       "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
       "id": 15
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 16
     }
   ],
   "github_cache": {},

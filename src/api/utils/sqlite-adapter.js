@@ -2,6 +2,31 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { logger } = require('./logger');
 
+// Sanitize parameters for logging to prevent leaking sensitive data
+function sanitizeParamsForLogging(params) {
+    if (!Array.isArray(params)) return params;
+    
+    const sensitivePatterns = [
+        /password/i,
+        /token/i,
+        /hash/i,
+        /secret/i,
+        /key/i,
+        /auth/i
+    ];
+    
+    return params.map((param, index) => {
+        if (typeof param === 'string') {
+            // Check if parameter might be sensitive based on common patterns
+            const isSensitive = sensitivePatterns.some(pattern => pattern.test(param));
+            if (isSensitive || param.length > 100) {
+                return '[REDACTED]';
+            }
+        }
+        return param;
+    });
+}
+
 class SQLiteAdapter {
     constructor(dbPath = 'portfolio.db') {
         // If dbPath is just a filename, look for it in /app directory
@@ -33,10 +58,10 @@ class SQLiteAdapter {
 
     async query(sql, params = []) {
         return new Promise((resolve, reject) => {
-            logger.info('SQLite query executing', null, { sql, params });
+            logger.info('SQLite query executing', null, { sql, params: sanitizeParamsForLogging(params) });
             this.db.all(sql, params, (err, rows) => {
                 if (err) {
-                    logger.error('SQLite query failed', err, { sql, params });
+                    logger.error('SQLite query failed', err, { sql, params: sanitizeParamsForLogging(params) });
                     reject(err);
                 } else {
                     logger.info('SQLite query success', null, { rowCount: rows.length });
@@ -54,7 +79,7 @@ class SQLiteAdapter {
                 // For SELECT queries, use all() to return rows
                 this.db.all(sql, params, (err, rows) => {
                     if (err) {
-                        logger.error('SQLite execute failed', err, { sql, params });
+                        logger.error('SQLite execute failed', err, { sql, params: sanitizeParamsForLogging(params) });
                         reject(err);
                     } else {
                         resolve([rows]); // Return as array to match MySQL format
@@ -64,7 +89,7 @@ class SQLiteAdapter {
                 // For INSERT/UPDATE/DELETE queries, use run()
                 this.db.run(sql, params, function(err) {
                     if (err) {
-                        logger.error('SQLite execute failed', err, { sql, params });
+                        logger.error('SQLite execute failed', err, { sql, params: sanitizeParamsForLogging(params) });
                         reject(err);
                     } else {
                         resolve([{

@@ -131,19 +131,31 @@ class CacheManager {
         }
         
         // Limit pattern length and complexity
-        if (pattern.length > 200) {
+        if (pattern.length > 100) {
             logger.warn('Pattern too long for invalidatePattern', null, { patternLength: pattern.length });
             return 0;
         }
         
+        // Only allow simple glob-like patterns for safety
+        // Convert simple glob patterns to safe regex
+        let safePattern = pattern
+            .replace(/\*/g, '.*')  // Convert * to .*
+            .replace(/\?/g, '.');  // Convert ? to .
+        
         // Block potentially dangerous regex patterns
         const dangerousPatterns = [
-            /\(\?\=.*\*\)/,  // Lookahead with quantifiers
-            /\(\?\!.*\*\)/,  // Negative lookahead with quantifiers
-            /\(\?\:.*\{.*\}/, // Non-capturing groups with quantifiers
-            /\(\.\*\)\{/,     // Nested quantifiers
-            /\.\*\.\*\./,     // Multiple wildcards
-            /\(\.\*\*\)/,     // Nested quantifiers in groups
+            /\(\?\=.*\)/,         // Any lookahead
+            /\(\?\!.*\)/,         // Any negative lookahead
+            /\(\?\:.*\)/,         // Non-capturing groups
+            /\{.*\}/,             // Quantifiers with specific counts
+            /\+/,                 // One or more quantifier
+            /\[\^.*?\]/,          // Negated character classes
+            /\\[bBdDsSwW]/,       // Special character classes
+            /\\[nrtvf]/,          // Escape sequences
+            /\(\.\*\)/,           // Groups with quantifiers
+            /\.\*\.\*/,           // Multiple wildcards
+            /\.\*\+/,             // Greedy quantifiers
+            /\.\*\?/,             // Lazy quantifiers
         ];
         
         for (const dangerousPattern of dangerousPatterns) {
@@ -153,16 +165,40 @@ class CacheManager {
             }
         }
         
+        // Additional validation: only allow alphanumeric, spaces, and simple glob characters
+        if (!/^[a-zA-Z0-9_\-\s\*\?\:|\.]+$/.test(pattern)) {
+            logger.warn('Pattern contains invalid characters', null, { pattern });
+            return 0;
+        }
+        
         try {
-            // Add timeout to regex execution to prevent hanging
-            const regex = new RegExp(pattern);
+            // Create safe regex with anchored pattern
+            const regex = new RegExp(`^${safePattern}$`);
             const startTime = Date.now();
-            const timeout = 5000; // 5 second timeout
+            const timeout = 2000; // Reduced timeout to 2 seconds
+            const maxKeys = 1000; // Limit number of keys to process
             
+            let processedKeys = 0;
             for (const [key] of this.cache.entries()) {
+                processedKeys++;
+                
                 // Check timeout
                 if (Date.now() - startTime > timeout) {
-                    logger.warn('Regex pattern matching timed out', null, { pattern, processedKeys: deletedCount });
+                    logger.warn('Regex pattern matching timed out', null, { 
+                        pattern, 
+                        processedKeys, 
+                        deletedCount 
+                    });
+                    break;
+                }
+                
+                // Limit processing to prevent DoS
+                if (processedKeys > maxKeys) {
+                    logger.warn('Pattern matching exceeded maximum key limit', null, { 
+                        pattern, 
+                        maxKeys,
+                        deletedCount 
+                    });
                     break;
                 }
                 
@@ -172,11 +208,18 @@ class CacheManager {
                 }
             }
             
-            logger.info('Cache invalidated by pattern', null, { pattern, deletedCount });
+            logger.info('Cache invalidated by pattern', null, { 
+                pattern, 
+                deletedCount,
+                processedKeys 
+            });
             return deletedCount;
             
         } catch (error) {
-            logger.error('Invalid regex pattern in invalidatePattern', null, { pattern, error: error.message });
+            logger.error('Invalid regex pattern in invalidatePattern', null, { 
+                pattern, 
+                error: error.message 
+            });
             return 0;
         }
     }

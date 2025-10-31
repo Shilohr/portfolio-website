@@ -14,10 +14,8 @@ const csrfProtection = csrf({
 
 // CSRF token middleware for API routes
 const csrfTokenMiddleware = (req, res, next) => {
-    // Only apply CSRF to state-changing operations
-    // Exclude GitHub sync as it's a read-only operation fetching public data
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && 
-        !(req.path === '/sync' && req.baseUrl.includes('/github'))) {
+    // Apply CSRF to all state-changing operations
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
         return csrfProtection(req, res, next);
     }
     next();
@@ -46,7 +44,8 @@ const csrfErrorHandler = (err, req, res, next) => {
         logger.security('CSRF_TOKEN_INVALID', req, 'high', {
             userAgent: req.get('User-Agent'),
             ip: req.ip,
-            path: req.path
+            path: req.path,
+            method: req.method
         });
         return res.status(403).json({ 
             error: 'Invalid CSRF token',

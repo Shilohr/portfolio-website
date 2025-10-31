@@ -170,49 +170,53 @@ const pool = createPool({
 // Database connection pool monitoring
 pool.on('connection', (connection) => {
     logger.info('New database connection established', null, {
-        connectionId: connection.threadId,
+        connectionId: connection.threadId || 'unknown',
         timestamp: new Date().toISOString()
     });
 });
 
 pool.on('acquire', (connection) => {
     logger.debug('Connection acquired from pool', null, {
-        connectionId: connection.threadId,
-        activeConnections: pool._allConnections.length,
-        freeConnections: pool._freeConnections.length
+        connectionId: connection.threadId || 'unknown',
+        activeConnections: pool._allConnections?.length || 0,
+        freeConnections: pool._freeConnections?.length || 0
     });
 });
 
 pool.on('release', (connection) => {
     logger.debug('Connection released to pool', null, {
-        connectionId: connection.threadId,
-        activeConnections: pool._allConnections.length,
-        freeConnections: pool._freeConnections.length
+        connectionId: connection.threadId || 'unknown',
+        activeConnections: pool._allConnections?.length || 0,
+        freeConnections: pool._freeConnections?.length || 0
     });
 });
 
 pool.on('enqueue', () => {
-    logger.warn('Connection request queued - pool exhausted', null, {
-        queueLength: pool._connectionQueue.length,
-        activeConnections: pool._allConnections.length,
-        freeConnections: pool._freeConnections.length
+    logger.debug('Connection request queued', null, {
+        queueLength: pool._connectionQueue?.length || 0,
+        activeConnections: pool._allConnections?.length || 0,
+        freeConnections: pool._freeConnections?.length || 0
     });
+});
 });
 
 // Initialize database maintenance
 const dbMaintenance = new DatabaseMaintenance(pool);
 
-// Periodic pool health monitoring
+// Periodic pool health monitoring (only for MySQL pools)
 setInterval(() => {
-    const poolStats = {
-        totalConnections: pool._allConnections.length,
-        freeConnections: pool._freeConnections.length,
-        queuedRequests: pool._connectionQueue.length,
-        connectionLimit: pool.config.connectionLimit,
-        timestamp: new Date().toISOString()
-    };
-    
-    logger.info('Database pool health check', null, poolStats);
+    // Only monitor pool stats if MySQL-specific properties are available
+    if (pool._allConnections && pool._freeConnections && pool._connectionQueue) {
+        const poolStats = {
+            totalConnections: pool._allConnections.length,
+            freeConnections: pool._freeConnections.length,
+            queuedRequests: pool._connectionQueue.length,
+            connectionLimit: pool.config?.connectionLimit || 'unknown',
+            timestamp: new Date().toISOString()
+        };
+        
+        logger.info('Database pool health check', null, poolStats);
+    }
     
     // Alert if pool is under stress
     if (poolStats.queuedRequests > 0) {

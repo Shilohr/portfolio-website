@@ -23,7 +23,7 @@ class TransactionManager {
             await connection.beginTransaction();
             
             logger.debug('Transaction started', null, { 
-                connectionId: connection.threadId,
+                connectionId: connection.threadId || 'unknown',
                 isolationLevel: options.isolationLevel || 'REPEATABLE READ'
             });
             
@@ -38,19 +38,35 @@ class TransactionManager {
             await connection.commit();
             
             logger.debug('Transaction committed', null, { 
-                connectionId: connection.threadId 
+                connectionId: connection.threadId || 'unknown' 
             });
             
             return result;
             
         } catch (error) {
-            await connection.rollback();
-            
-            logger.error('Transaction rolled back', null, { 
-                connectionId: connection.threadId,
-                error: error.message,
-                stack: error.stack
-            });
+            // Only rollback if connection exists and has rollback method
+            if (connection && typeof connection.rollback === 'function') {
+                try {
+                    await connection.rollback();
+                    
+                    logger.error('Transaction rolled back', null, { 
+                        connectionId: connection.threadId || 'unknown',
+                        error: error.message,
+                        stack: error.stack
+                    });
+                } catch (rollbackError) {
+                    logger.error('Failed to rollback transaction', null, { 
+                        connectionId: connection.threadId || 'unknown',
+                        rollbackError: rollbackError.message,
+                        originalError: error.message
+                    });
+                }
+            } else {
+                logger.error('Transaction failed, no connection available for rollback', null, { 
+                    error: error.message,
+                    stack: error.stack
+                });
+            }
             
             throw error;
             

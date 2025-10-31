@@ -2,6 +2,59 @@ const fs = require('fs').promises;
 const path = require('path');
 const { logger } = require('./logger');
 
+// Simple mutex for preventing concurrent writes
+class WriteMutex {
+    constructor() {
+        this.locked = false;
+        this.queue = [];
+    }
+    
+    async acquire() {
+        return new Promise((resolve) => {
+            if (!this.locked) {
+                this.locked = true;
+                resolve();
+            } else {
+                this.queue.push(resolve);
+            }
+        });
+    }
+    
+    release() {
+        if (this.queue.length > 0) {
+            const next = this.queue.shift();
+            next();
+        } else {
+            this.locked = false;
+        }
+    }
+}
+
+// Sanitize parameters for logging to prevent leaking sensitive data
+function sanitizeParamsForLogging(params) {
+    if (!Array.isArray(params)) return params;
+    
+    const sensitivePatterns = [
+        /password/i,
+        /token/i,
+        /hash/i,
+        /secret/i,
+        /key/i,
+        /auth/i
+    ];
+    
+    return params.map((param, index) => {
+        if (typeof param === 'string') {
+            // Check if parameter might be sensitive based on common patterns
+            const isSensitive = sensitivePatterns.some(pattern => pattern.test(param));
+            if (isSensitive || param.length > 100) {
+                return '[REDACTED]';
+            }
+        }
+        return param;
+    });
+}
+
 class JSONAdapter {
     constructor(dbPath = 'portfolio.json') {
         // If dbPath is just a filename, look for it in /app directory
@@ -12,6 +65,9 @@ class JSONAdapter {
         }
         this.data = null;
         this.initialized = false;
+        this.writeMutex = new WriteMutex();
+        this.transactionInProgress = false;
+        this.transactionData = null;
     }
 
     async connect() {
@@ -51,13 +107,64 @@ class JSONAdapter {
         this.initialized = true;
     }
 
-    async save() {
-        await fs.writeFile(this.dbPath, JSON.stringify(this.data, null, 2), 'utf8');
+async save() {
+        // Don't save if transaction is in progress (will be saved on commit)
+        if (this.transactionInProgress) {
+            return;
+        }
+        
+        // Use mutex to prevent concurrent writes
+        await this.writeMutex.acquire();
+        try {
+            await fs.writeFile(this.dbPath, JSON.stringify(this.data, null, 2), 'utf8');
+        } catch (error) {
+            logger.error('Failed to save JSON database', null, { 
+                error: error.message,
+                dbPath: this.dbPath
+            });
+            throw error;
+        } finally {
+            this.writeMutex.release();
+        }
+    }
+        
+        // Serialize writes to prevent race conditions
+        if (this.writeLock) {
+            return new Promise((resolve, reject) => {
+                this.writeQueue.push({ resolve, reject });
+            });
+        }
+
+        this.writeLock = true;
+        try {
+            await fs.writeFile(this.dbPath, JSON.stringify(this.data, null, 2), 'utf8');
+            
+            // Resolve any queued writes
+            while (this.writeQueue.length > 0) {
+                const { resolve } = this.writeQueue.shift();
+                resolve();
+            }
+        } catch (error) {
+            logger.error('Failed to save JSON database', null, { 
+                error: error.message,
+                dbPath: this.dbPath
+            });
+            
+            // Reject any queued writes
+            while (this.writeQueue.length > 0) {
+                const { reject } = this.writeQueue.shift();
+                reject(error);
+            }
+            
+            throw error;
+        } finally {
+            this.writeLock = false;
+        }
     }
 
     async query(sql, params = []) {
         await this.ensureInitialized();
-        logger.info('JSON query executing', null, { sql, params });
+        logger.info('JSON query executing', null, { sql, params: sanitizeParamsForLogging(params) });
         
         // Parse SQL and convert to JSON operations
         const result = this.executeSQL(sql, params);
@@ -93,11 +200,11 @@ class JSONAdapter {
         if (trimmedSql.startsWith('SELECT')) {
             return this.executeSelect(sql, params);
         } else if (trimmedSql.startsWith('INSERT')) {
-            return this.executeInsert(sql, params);
+            return await this.executeInsert(sql, params);
         } else if (trimmedSql.startsWith('UPDATE')) {
-            return this.executeUpdate(sql, params);
+            return await this.executeUpdate(sql, params);
         } else if (trimmedSql.startsWith('DELETE')) {
-            return this.executeDelete(sql, params);
+            return await this.executeDelete(sql, params);
         } else if (trimmedSql.startsWith('CREATE')) {
             return this.executeCreate(sql, params);
         } else {
@@ -168,7 +275,7 @@ class JSONAdapter {
         return data;
     }
 
-    executeInsert(sql, params) {
+    async executeInsert(sql, params) {
         const tableMatch = sql.match(/INSERT\s+INTO\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
@@ -202,7 +309,20 @@ class JSONAdapter {
         }
         
         this.data[tableName].push(newRecord);
-        this.save(); // Async but we'll fire and forget for now
+        
+        // Only save immediately if not in a transaction
+        if (!this.transactionInProgress) {
+            try {
+                await this.save();
+            } catch (error) {
+                // Rollback the insert if save failed
+                const index = this.data[tableName].findIndex(r => r.id === newRecord.id);
+                if (index !== -1) {
+                    this.data[tableName].splice(index, 1);
+                }
+                throw error;
+            }
+        }
         
         return { 
             insertId: newRecord.id, 
@@ -210,7 +330,7 @@ class JSONAdapter {
         };
     }
 
-    executeUpdate(sql, params) {
+    async executeUpdate(sql, params) {
         const tableMatch = sql.match(/UPDATE\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
@@ -234,23 +354,45 @@ class JSONAdapter {
             const setClause = setMatch[1];
             const updates = this.parseSetClause(setClause, params);
             
+            // Store original state for rollback
+            const originalStates = [];
             let affectedRows = 0;
+            
             data.forEach(record => {
                 const originalData = this.data[tableName].find(r => r.id === record.id);
                 if (originalData) {
+                    originalStates.push({
+                        id: originalData.id,
+                        data: { ...originalData }
+                    });
                     Object.assign(originalData, updates);
                     affectedRows++;
                 }
             });
             
-            this.save(); // Async but fire and forget
+            // Only save immediately if not in a transaction
+            if (!this.transactionInProgress) {
+                try {
+                    await this.save();
+                } catch (error) {
+                    // Rollback updates if save failed
+                    originalStates.forEach(({ id, data: originalData }) => {
+                        const index = this.data[tableName].findIndex(r => r.id === id);
+                        if (index !== -1) {
+                            this.data[tableName][index] = originalData;
+                        }
+                    });
+                    throw error;
+                }
+            }
+            
             return { affectedRows };
         }
         
         return { affectedRows: 0 };
     }
 
-    executeDelete(sql, params) {
+    async executeDelete(sql, params) {
         const tableMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
@@ -267,12 +409,25 @@ class JSONAdapter {
             const whereClause = whereMatch[1];
             const toDelete = this.applyWhereClause([...data], whereClause, params);
             
+            // Store original data for rollback
+            const originalData = [...this.data[tableName]];
+            
             // Remove records
             this.data[tableName] = data.filter(record => 
                 !toDelete.some(deleteRecord => deleteRecord.id === record.id)
             );
             
-            this.save(); // Async but fire and forget
+            // Only save immediately if not in a transaction
+            if (!this.transactionInProgress) {
+                try {
+                    await this.save();
+                } catch (error) {
+                    // Rollback deletion if save failed
+                    this.data[tableName] = originalData;
+                    throw error;
+                }
+            }
+            
             return { affectedRows: toDelete.length };
         }
         
@@ -286,52 +441,104 @@ class JSONAdapter {
     }
 
     applyWhereClause(data, whereClause, params) {
-        // Very basic WHERE clause implementation
-        // This is a simplified version - in production you'd want a proper SQL parser
+        // Check for unsupported SQL constructs that could cause issues
+        const unsupportedPatterns = [
+            /LIMIT\s+/i,
+            /GROUP\s+BY/i,
+            /HAVING\s+/i,
+            /UNION/i,
+            /JOIN/i,
+            /SUBSTRING|LEFT|RIGHT|CONCAT|UPPER|LOWER/i,
+            /\(.*SELECT.*\)/i,
+            /IN\s*\(/i,
+            /BETWEEN/i,
+            /LIKE/i,
+            /IS\s+(NULL|NOT\s+NULL)/i,
+            /CASE\s+WHEN/i
+        ];
+
+        for (const pattern of unsupportedPatterns) {
+            if (pattern.test(whereClause)) {
+                throw new Error(`Unsupported SQL construct in WHERE clause: ${whereClause}`);
+            }
+        }
+
+        // Validate parameter count matches placeholders
+        const placeholderCount = (whereClause.match(/\?/g) || []).length;
+        if (placeholderCount !== params.length) {
+            throw new Error(`Parameter count mismatch. Expected ${placeholderCount}, got ${params.length}`);
+        }
+
         return data.filter(record => {
-            // Handle basic equality conditions with AND/OR
-            const orConditions = whereClause.split('OR').map(c => c.trim());
-            
-            return orConditions.some(orCondition => {
-                const andConditions = orCondition.split('AND').map(c => c.trim());
-                return andConditions.every(andCondition => {
-                    // Handle equality conditions
-                    const match = andCondition.match(/(\w+)\s*=\s*\?/i);
-                    if (match && params.length > 0) {
-                        const column = match[1];
-                        const paramIndex = this.getParamIndex(whereClause, andCondition);
-                        return record[column] == params[paramIndex]; // Use == for loose comparison
-                    }
-                    
-                    // Handle greater than conditions (for expires_at > NOW())
-                    const greaterMatch = andCondition.match(/(\w+)\s*>\s*NOW\(\)/i);
-                    if (greaterMatch) {
-                        const column = greaterMatch[1];
-                        const recordValue = record[column];
-                        if (recordValue) {
-                            const expiresTime = new Date(recordValue).getTime();
-                            const nowTime = Date.now();
-                            return expiresTime > nowTime;
+            try {
+                // Handle basic equality conditions with AND/OR
+                const orConditions = whereClause.split('OR').map(c => c.trim());
+                
+                return orConditions.some(orCondition => {
+                    const andConditions = orCondition.split('AND').map(c => c.trim());
+                    return andConditions.every(andCondition => {
+                        // Handle equality conditions
+                        const match = andCondition.match(/(\w+)\s*=\s*\?/i);
+                        if (match && params.length > 0) {
+                            const column = match[1];
+                            const paramIndex = this.getParamIndex(whereClause, andCondition);
+                            if (paramIndex < 0 || paramIndex >= params.length) {
+                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
+                            }
+                            return record[column] == params[paramIndex]; // Use == for loose comparison
                         }
-                        return false;
-                    }
-                    
-                    // Handle boolean conditions (is_active = TRUE)
-                    const booleanMatch = andCondition.match(/(\w+)\s*=\s*(TRUE|FALSE)/i);
-                    if (booleanMatch) {
-                        const column = booleanMatch[1];
-                        const expectedValue = booleanMatch[2].toUpperCase() === 'TRUE';
-                        const recordValue = record[column];
-                        // If field doesn't exist, default to TRUE for is_active
-                        if (recordValue === undefined && column === 'is_active') {
-                            return expectedValue; // Assume active if not set
+                        
+                        // Handle greater than conditions (for expires_at > NOW())
+                        const greaterMatch = andCondition.match(/(\w+)\s*>\s*NOW\(\)/i);
+                        if (greaterMatch) {
+                            const column = greaterMatch[1];
+                            const recordValue = record[column];
+                            if (recordValue) {
+                                const expiresTime = new Date(recordValue).getTime();
+                                const nowTime = Date.now();
+                                return expiresTime > nowTime;
+                            }
+                            return false;
                         }
-                        return recordValue === expectedValue;
-                    }
-                    
-                    return true; // If we can't parse, include it
+                        
+                        // Handle less than conditions (for expires_at < NOW())
+                        const lessMatch = andCondition.match(/(\w+)\s*<\s*NOW\(\)/i);
+                        if (lessMatch) {
+                            const column = lessMatch[1];
+                            const recordValue = record[column];
+                            if (recordValue) {
+                                const expiresTime = new Date(recordValue).getTime();
+                                const nowTime = Date.now();
+                                return expiresTime < nowTime;
+                            }
+                            return true; // If no expires_at, consider it expired
+                        }
+                        
+                        // Handle boolean conditions (is_active = TRUE)
+                        const booleanMatch = andCondition.match(/(\w+)\s*=\s*(TRUE|FALSE)/i);
+                        if (booleanMatch) {
+                            const column = booleanMatch[1];
+                            const expectedValue = booleanMatch[2].toUpperCase() === 'TRUE';
+                            const recordValue = record[column];
+                            // If field doesn't exist, default to TRUE for is_active
+                            if (recordValue === undefined && column === 'is_active') {
+                                return expectedValue; // Assume active if not set
+                            }
+                            return recordValue === expectedValue;
+                        }
+                        
+                        // If we can't parse the condition, fail closed
+                        throw new Error(`Unsupported WHERE clause condition: ${andCondition}`);
+                    });
                 });
-            });
+            } catch (error) {
+                logger.error('WHERE clause parsing failed', null, { 
+                    whereClause, 
+                    params, 
+                    error: error.message 
+                });
+                throw error;
+            }
         });
     }
     
@@ -398,19 +605,74 @@ class JSONAdapter {
     }
 
     async beginTransaction() {
-        // No-op for JSON adapter (simplified)
+        if (this.transactionInProgress) {
+            throw new Error('Transaction already in progress');
+        }
+        
+        // Create a deep copy of current data for rollback
+        this.transactionData = JSON.parse(JSON.stringify(this.data));
+        this.transactionInProgress = true;
+        
+        logger.debug('Transaction started', null, { 
+            dbPath: this.dbPath,
+            dataKeys: Object.keys(this.data)
+        });
+        
         return [];
     }
 
     async commit() {
-        // Save any pending changes
-        await this.save();
-        return [];
+        if (!this.transactionInProgress) {
+            throw new Error('No transaction in progress');
+        }
+        
+        try {
+            // Save any pending changes
+            await this.save();
+            this.transactionData = null;
+            this.transactionInProgress = false;
+            
+            logger.debug('Transaction committed', null, { 
+                dbPath: this.dbPath
+            });
+            
+            return [];
+        } catch (error) {
+            // If save fails, rollback automatically
+            await this.rollback();
+            throw error;
+        }
     }
 
     async rollback() {
-        // No-op for JSON adapter (simplified)
-        return [];
+        if (!this.transactionInProgress) {
+            logger.warn('Rollback called without active transaction', null);
+            return [];
+        }
+        
+        try {
+            // Restore data from transaction snapshot
+            if (this.transactionData) {
+                this.data = this.transactionData;
+                this.transactionData = null;
+            }
+            
+            this.transactionInProgress = false;
+            
+            logger.debug('Transaction rolled back', null, { 
+                dbPath: this.dbPath
+            });
+            
+            return [];
+        } catch (error) {
+            logger.error('Error during transaction rollback', error, { 
+                dbPath: this.dbPath
+            });
+            // Ensure transaction state is cleared even on error
+            this.transactionInProgress = false;
+            this.transactionData = null;
+            throw error;
+        }
     }
 }
 
