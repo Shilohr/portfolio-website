@@ -17,8 +17,10 @@ document.addEventListener('DOMContentLoaded', function() {
         loginForm.addEventListener('submit', handleLogin);
     }
     
-    // Check if already logged in
-    checkAuthStatus();
+    // Wait a bit for CSRF token to initialize, then check auth status
+    setTimeout(() => {
+        checkAuthStatus();
+    }, 100);
 });
 
 // Handle Login
@@ -72,13 +74,7 @@ async function handleLogin(e) {
 
 // Check Authentication Status
 function checkAuthStatus() {
-    // Only check if we have a CSRF token available
-    if (!window.csrfToken) {
-        console.log('CSRF token not available, skipping auth check');
-        return;
-    }
-    
-    // Verify token is still valid via cookie
+    // Verify token is still valid via cookie (no CSRF needed for GET profile)
     fetch('/api/auth/profile', {
         credentials: 'include',
         headers: {
@@ -87,12 +83,18 @@ function checkAuthStatus() {
     })
     .then(response => {
         if (!response.ok) {
-            // Token invalid
-            logout();
+            console.log('Auth check failed - user not logged in');
+            // Only logout if we're not on the login page
+            if (!window.location.pathname.includes('login.html')) {
+                logout();
+            }
+        } else {
+            console.log('Auth check passed - user is logged in');
         }
     })
     .catch(error => {
         console.error('Auth check error:', error);
+        // Don't logout on network errors, only on auth failures
     });
 }
 

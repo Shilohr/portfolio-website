@@ -12,6 +12,9 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy API source code
 COPY src/api/ ./
 
+# Copy database file
+COPY portfolio.json ./
+
 # Copy frontend files
 COPY src/frontend/ /var/www/html/
 COPY config/nginx.conf /etc/nginx/nginx.conf

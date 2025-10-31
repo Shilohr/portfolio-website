@@ -7,7 +7,7 @@ const utils = {
     // CSRF Token management
     async getCsrfToken() {
         try {
-            const response = await fetch('http://localhost:8080/api/csrf-token', {
+            const response = await fetch('/api/csrf-token', {
                 credentials: 'include'
             });
             const data = await response.json();
@@ -20,14 +20,13 @@ const utils = {
 
     // API Request helper
     async apiRequest(endpoint, options = {}) {
-        const url = `http://localhost:8080/api${endpoint}`;
+        const url = `/api${endpoint}`;
         const token = this.getToken();
         
         const config = {
             credentials: 'include',
             headers: {
-                'Content-Type': 'application/json',
-                ...(token && { 'Authorization': `Bearer ${token}` })
+                'Content-Type': 'application/json'
             },
             ...options
         };
