@@ -17,6 +17,7 @@ COPY portfolio.json ./
 
 # Copy frontend files
 COPY src/frontend/ /var/www/html/
+COPY public/assets/ /var/www/html/assets/
 COPY config/nginx.conf /etc/nginx/nginx.conf
 
 # Create startup script that runs both nginx and the API
