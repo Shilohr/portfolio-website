@@ -91,12 +91,12 @@ class LogMonitor {
       console.log(`Health: ${report.insights.health}`);
       
       if (report.insights.alerts.length > 0) {
-        console.log('\n🚨 ALERTS:');
+        console.log('\nALERTS:');
         report.insights.alerts.forEach(alert => console.log(`  - ${alert}`));
       }
       
       if (report.insights.recommendations.length > 0) {
-        console.log('\n💡 RECOMMENDATIONS:');
+        console.log('\nRECOMMENDATIONS:');
         report.insights.recommendations.forEach(rec => console.log(`  - ${rec}`));
       }
       

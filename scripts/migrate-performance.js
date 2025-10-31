@@ -9,7 +9,7 @@ async function runMigration() {
     let connection;
     
     try {
-        console.log('🚀 Starting performance optimization migration...');
+        console.log('Starting performance optimization migration...');
         
         // Create database connection
         connection = await mysql.createConnection({
@@ -20,13 +20,13 @@ async function runMigration() {
             charset: 'utf8mb4'
         });
         
-        console.log('✅ Database connected successfully');
+        console.log('Database connected successfully');
         
         // Read migration file
         const migrationPath = path.join(__dirname, '../database/migrations/add_performance_indexes.sql');
         const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
         
-        console.log('📝 Migration file loaded');
+        console.log('Migration file loaded');
         
         // Split SQL into individual statements
         const statements = migrationSQL
@@ -34,7 +34,7 @@ async function runMigration() {
             .map(stmt => stmt.trim())
             .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
         
-        console.log(`🔧 Executing ${statements.length} SQL statements...`);
+        console.log(`Executing ${statements.length} SQL statements...`);
         
         // Execute each statement
         for (let i = 0; i < statements.length; i++) {
@@ -42,30 +42,30 @@ async function runMigration() {
             
             try {
                 await connection.execute(statement);
-                console.log(`✅ Statement ${i + 1}/${statements.length} executed successfully`);
+                console.log(`Statement ${i + 1}/${statements.length} executed successfully`);
             } catch (error) {
                 // Ignore "duplicate key" errors since we used IF NOT EXISTS
                 if (error.code === 'ER_DUP_KEYNAME' || error.code === 'ER_KEY_COLUMN_DOES_NOT_EXITS') {
-                    console.log(`⚠️  Statement ${i + 1}/${statements.length} skipped (index already exists)`);
+                    console.log(`Warning: Statement ${i + 1}/${statements.length} skipped (index already exists)`);
                 } else {
-                    console.error(`❌ Statement ${i + 1}/${statements.length} failed:`, error.message);
+                    console.error(`Statement ${i + 1}/${statements.length} failed:`, error.message);
                     throw error;
                 }
             }
         }
         
-        console.log('🎉 Performance optimization migration completed successfully!');
+        console.log('Performance optimization migration completed successfully!');
         
         // Show index information
         const [tables] = await connection.execute('SHOW TABLES');
-        console.log('\n📊 Current database indexes:');
+        console.log('\nCurrent database indexes:');
         
         for (const table of tables) {
             const tableName = Object.values(table)[0];
             const [indexes] = await connection.execute(`SHOW INDEX FROM ${tableName}`);
             
             if (indexes.length > 0) {
-                console.log(`\n📋 ${tableName}:`);
+                console.log(`\n${tableName}:`);
                 indexes.forEach(index => {
                     console.log(`   - ${index.Key_name} (${index.Column_name})`);
                 });
@@ -73,12 +73,12 @@ async function runMigration() {
         }
         
     } catch (error) {
-        console.error('❌ Migration failed:', error.message);
+        console.error('Migration failed:', error.message);
         process.exit(1);
     } finally {
         if (connection) {
             await connection.end();
-            console.log('\n🔌 Database connection closed');
+            console.log('\nDatabase connection closed');
         }
     }
 }

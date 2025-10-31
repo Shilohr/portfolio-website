@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-console.log('🔐 Generating secure production secrets...\n');
+console.log('Generating secure production secrets...\n');
 
 // Generate cryptographically secure secrets
 const secrets = {
@@ -56,7 +56,7 @@ const envPath = path.join(__dirname, '../.env.production');
 
 // Check if file already exists
 if (fs.existsSync(envPath)) {
-    console.log('⚠️  .env.production already exists!');
+    console.log('Warning: .env.production already exists!');
     console.log('Backup created as .env.production.backup');
     fs.copyFileSync(envPath, envPath + '.backup');
 }
@@ -64,9 +64,9 @@ if (fs.existsSync(envPath)) {
 // Write the new environment file
 fs.writeFileSync(envPath, envContent);
 
-console.log('✅ .env.production created successfully!');
-console.log('📁 File location:', envPath);
-console.log('\n🔒 Security reminders:');
+console.log('.env.production created successfully!');
+console.log('File location:', envPath);
+console.log('\nSecurity reminders:');
 console.log('   - Never commit .env.production to version control');
 console.log('   - Store secrets securely (e.g., environment variables, secret manager)');
 console.log('   - Update GITHUB_TOKEN and SMTP credentials with real values');
@@ -75,9 +75,9 @@ console.log('   - Ensure file permissions are set correctly (chmod 600 .env.prod
 // Set secure file permissions
 try {
     fs.chmodSync(envPath, 0o600);
-    console.log('🔐 File permissions set to 600 (read/write for owner only)');
+    console.log('File permissions set to 600 (read/write for owner only)');
 } catch (error) {
-    console.log('⚠️  Could not set file permissions. Set manually: chmod 600 .env.production');
+    console.log('Warning: Could not set file permissions. Set manually: chmod 600 .env.production');
 }
 
-console.log('\n🚀 Ready for production deployment!');
+console.log('\nReady for production deployment!');

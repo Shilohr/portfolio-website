@@ -2,7 +2,7 @@
 
 A complete portfolio website with backend API and modern frontend, featuring a retro space theme.
 
-## 🚀 Features
+## Features
 
 - **Backend API**: Express.js server with JWT authentication
 - **Modern Frontend**: Responsive design with retro space aesthetics
@@ -12,7 +12,7 @@ A complete portfolio website with backend API and modern frontend, featuring a r
 - **Database**: PostgreSQL with comprehensive schema
 - **Docker Support**: Full containerization with Docker Compose
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
 - Node.js with Express.js
@@ -26,7 +26,7 @@ A complete portfolio website with backend API and modern frontend, featuring a r
 - Retro Space Theme
 - RESTful API Integration
 
-## 📦 Installation
+## Installation
 
 ### Prerequisites
 - Node.js (v14 or higher)
@@ -71,13 +71,13 @@ A complete portfolio website with backend API and modern frontend, featuring a r
 docker-compose up -d
 ```
 
-## 🌐 Access
+## Access
 
 - **Main Website**: http://localhost:8080
 - **Admin Dashboard**: http://localhost:8080/admin
 - **API Endpoints**: http://localhost:8080/api
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 portfolio-website/
@@ -109,7 +109,7 @@ portfolio-website/
 └── package.json             # Dependencies and scripts
 ```
 
-## 🔐 Authentication
+## Authentication
 
 The application uses JWT-based authentication. Default admin credentials:
 - Username: `admin`
@@ -117,7 +117,7 @@ The application uses JWT-based authentication. Default admin credentials:
 
 **Important**: Change these credentials in production!
 
-## 🎨 Theme
+## Theme
 
 The website features a modern retro space theme with:
 - **Primary Colors**: Deep space blues and purples
@@ -125,7 +125,7 @@ The website features a modern retro space theme with:
 - **Typography**: Modern sans-serif with tech-inspired styling
 - **Animations**: Smooth transitions and hover effects
 
-## 📊 API Endpoints
+## API Endpoints
 
 ### Authentication
 - `POST /api/auth/login` - User login
@@ -143,7 +143,7 @@ The website features a modern retro space theme with:
 - `GET /api/github/repos` - Get GitHub repositories
 - `GET /api/github/user` - Get GitHub user info
 
-## 🚀 Deployment
+## Deployment
 
 ### Production Deployment
 
@@ -171,7 +171,7 @@ npm install --production
 npm start
 ```
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -182,11 +182,11 @@ npm run test:unit
 npm run test:integration
 ```
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
@@ -194,7 +194,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📞 Contact
+## Contact
 
 - **GitHub**: [@Shilohr](https://github.com/Shilohr)
 - **Portfolio**: https://shilohr.github.io/portfolio-website
