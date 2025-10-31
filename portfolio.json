@@ -1,0 +1,21 @@
+{
+  "projects": [],
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@example.com",
+      "password_hash": "$2a$12$FWIxy.jGFxH30ymWPsY/l.AmvOuPJOPK6MRfXrr7vBoR5pyGVvhj2",
+      "role": "admin",
+      "is_active": true,
+      "login_attempts": 0,
+      "locked_until": null,
+      "created_at": "2025-10-31T10:31:45.363Z",
+      "last_login": null
+    }
+  ],
+  "sessions": [],
+  "audit_log": [],
+  "github_cache": {},
+  "github_repos": []
+}
