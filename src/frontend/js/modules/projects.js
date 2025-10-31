@@ -135,12 +135,24 @@ async function handleGitHubSync() {
     if (!syncGithubBtn) return;
     
     try {
+        // Ensure CSRF token is available before making request
+        if (!window.csrfToken) {
+            console.warn('CSRF token not available, waiting...');
+            // Wait a bit for CSRF token to initialize
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            if (!window.csrfToken) {
+                throw new Error('CSRF token not available. Please refresh the page and try again.');
+            }
+        }
+        
         const originalText = syncGithubBtn.textContent;
         syncGithubBtn.textContent = 'Syncing...';
         syncGithubBtn.disabled = true;
         syncGithubBtn.setAttribute('aria-label', 'Syncing GitHub repositories...');
         
         announceToScreenReader('Syncing GitHub repositories...');
+        
         
         const response = await makeAPIRequest('/api/github/sync', { method: 'POST' });
         const data = await handleAPIResponse(response, 'Failed to sync GitHub');
