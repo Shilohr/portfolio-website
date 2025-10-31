@@ -38,9 +38,9 @@ try {
     
 } catch (error) {
     // Use console.error here since logger might not be properly initialized during config validation failure
-    console.error('❌ Environment validation failed:');
+    console.error('Environment validation failed:');
     console.error(error.message);
-    console.error('\n🔧 To fix this issue:');
+    console.error('\nTo fix this issue:');
     console.error('1. Copy .env.example to .env');
     console.error('2. Fill in the required environment variables');
     console.error('3. For production, run: node scripts/setup.js');
@@ -505,18 +505,30 @@ app.post('/api/admin/maintenance', [
 });
 
 /**
- * Serves the main index.html with injected CSRF token
+ * Serves HTML pages with injected CSRF token
  * Dynamically injects CSRF token into meta tag for frontend security
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
+ * @param {string} htmlFile - HTML file to serve
  */
-app.get('/', csrfProtection, (req, res) => {
+function serveHtmlWithCSRF(req, res, htmlFile) {
     const fs = require('fs');
     const path = require('path');
     
     try {
-        const indexPath = path.join(__dirname, '../../public/index.html');
-        let html = fs.readFileSync(indexPath, 'utf8');
+        const filePath = path.join(__dirname, '../../public', htmlFile);
+        let html = fs.readFileSync(filePath, 'utf8');
+        
+        // Check if CSRF token meta tag exists, if not add it
+        if (!html.includes('csrf-token')) {
+            // Add CSRF token meta tag after other meta tags
+            const metaInsertPoint = html.indexOf('</head>');
+            if (metaInsertPoint !== -1) {
+                html = html.substring(0, metaInsertPoint) + 
+                    '    <meta name="csrf-token" id="csrf-token" content="">\n' + 
+                    html.substring(metaInsertPoint);
+            }
+        }
         
         // Inject CSRF token into meta tag for frontend security
         const csrfToken = req.csrfToken();
@@ -527,9 +539,23 @@ app.get('/', csrfProtection, (req, res) => {
         
         res.send(html);
     } catch (error) {
-        logger.error('Failed to serve index.html', req, { error: error.message });
+        logger.error(`Failed to serve ${htmlFile}`, req, { error: error.message });
         sendError(res, 'INTERNAL_ERROR', 'Internal server error');
     }
+}
+
+/**
+ * Serves the main index.html with injected CSRF token
+ */
+app.get('/', csrfProtection, (req, res) => {
+    serveHtmlWithCSRF(req, res, 'index.html');
+});
+
+/**
+ * Serves login.html with injected CSRF token
+ */
+app.get('/login.html', csrfProtection, (req, res) => {
+    serveHtmlWithCSRF(req, res, 'login.html');
 });
 
 // Standardized error handling middleware
