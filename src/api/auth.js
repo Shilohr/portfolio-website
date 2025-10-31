@@ -386,8 +386,8 @@ router.post('/logout', async (req, res) => {
 });
 
 /**
- * JWT token validation middleware for protected routes
- * Validates token from cookie or Authorization header, checks session validity
+ * Middleware to verify JWT token and authenticate user
+ * Checks token validity against database sessions
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
@@ -442,6 +442,31 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
+/**
+ * Middleware to verify admin privileges
+ * Must be used after authenticateToken
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ * @returns {void} Calls next() if admin, sends error response if not
+ */
+const requireAdmin = (req, res, next) => {
+    if (!req.user) {
+        return sendError(res, 'UNAUTHORIZED', 'Authentication required');
+    }
+
+    if (req.user.role !== 'admin') {
+        logger.warn('Unauthorized admin access attempt', req, {
+            userId: req.user.userId,
+            userRole: req.user.role,
+            attemptedPath: req.originalUrl
+        });
+        return sendError(res, 'FORBIDDEN', 'Admin privileges required');
+    }
+
+    next();
+};
+
 // Protected route example
 router.get('/profile', authenticateToken, async (req, res) => {
     try {
@@ -467,3 +492,4 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
 module.exports = router;
 module.exports.authenticateToken = authenticateToken;
+module.exports.requireAdmin = requireAdmin;

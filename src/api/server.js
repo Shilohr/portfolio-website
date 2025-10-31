@@ -21,6 +21,7 @@ const { performanceMonitor, requestMonitor, monitorQuery } = require('./utils/pe
 const authRoutes = require('./auth');
 const projectsRoutes = require('./projects');
 const githubRoutes = require('./github');
+const { authenticateToken, requireAdmin } = require('./auth');
 
 // Validate environment configuration on startup
 let config;
@@ -400,6 +401,8 @@ app.get('/api/health', async (req, res) => {
  * Requires admin privileges and proper validation
  */
 app.post('/api/admin/cache', [
+    authenticateToken,
+    requireAdmin,
     commonValidations.maintenanceOperation,
     handleValidationErrors
 ], async (req, res) => {
@@ -453,7 +456,10 @@ app.post('/api/admin/cache', [
  * Provides comprehensive performance statistics and monitoring data
  * Requires admin privileges for access
  */
-app.get('/api/admin/performance', async (req, res) => {
+app.get('/api/admin/performance', [
+    authenticateToken,
+    requireAdmin
+], async (req, res) => {
     try {
         const summary = performanceMonitor.getSummary();
         
@@ -476,6 +482,8 @@ app.get('/api/admin/performance', async (req, res) => {
  * Requires admin privileges and comprehensive validation
  */
 app.post('/api/admin/maintenance', [
+    authenticateToken,
+    requireAdmin,
     commonValidations.maintenanceOperation,
     commonValidations.year,
     commonValidations.yearsToKeep,
@@ -493,12 +501,16 @@ app.post('/api/admin/maintenance', [
                 result = await dbMaintenance.optimizeTables();
                 break;
             case 'create-partition':
-                const year = req.body.year || new Date().getFullYear() + 1;
-                result = await dbMaintenance.createAuditLogPartition(year);
+                {
+                    const partitionYear = req.body.year || new Date().getFullYear() + 1;
+                    result = await dbMaintenance.createAuditLogPartition(partitionYear);
+                }
                 break;
             case 'drop-old-partitions':
-                const yearsToKeep = req.body.yearsToKeep || 3;
-                result = await dbMaintenance.dropOldPartitions(yearsToKeep);
+                {
+                    const keepYears = req.body.yearsToKeep || 3;
+                    result = await dbMaintenance.dropOldPartitions(keepYears);
+                }
                 break;
             case 'metrics':
                 result = await dbMaintenance.getPerformanceMetrics();
@@ -608,7 +620,7 @@ app.listen(PORT, () => {
     
     logger.info('Portfolio API server started', null, startupInfo);
     
-if (config.NODE_ENV === 'production') {
+    if (config.NODE_ENV === 'production') {
         logger.info('Security features enabled', null, {
             features: [
                 'HTTPS enforcement',

@@ -58,8 +58,8 @@ const checkProjectOwnership = [customValidations.validateProjectId, async (req, 
             return sendError(res, 'FORBIDDEN', 'Access denied: You do not own this project');
         }
         
-        // Attach project to request for use in handlers
-        req.project = project;
+        // Attach project array to request for use in handlers (maintaining consistency)
+        req.project = projects;
         next();
         
     } catch (error) {
@@ -240,14 +240,14 @@ router.post('/', authenticateToken, validateProject, handleValidationErrors, asy
             const projectId = projectResult.insertId;
 
             // Batch insert technologies
-            if (technologies.length > 0) {
-                const techOperations = technologies.map(tech => ({
+            if (sanitizedTechnologies.length > 0) {
+                const techOperations = sanitizedTechnologies.map(tech => ({
                     name: `insert_tech_${tech}`,
                     query: 'INSERT INTO project_technologies (project_id, technology) VALUES (?, ?)',
                     params: [projectId, tech]
                 }));
                 
-                await transactionManager.executeBatch(techOperations);
+                await transactionManager.executeBatch(techOperations, {}, connection);
             }
 
             // Log creation
@@ -308,14 +308,14 @@ router.put('/:id', authenticateToken, validateProject, checkProjectOwnership, ha
 
             // Update technologies with batch operations
             await connection.execute('DELETE FROM project_technologies WHERE project_id = ?', [id]);
-            if (technologies.length > 0) {
-                const techOperations = technologies.map(tech => ({
+            if (sanitizedTechnologies.length > 0) {
+                const techOperations = sanitizedTechnologies.map(tech => ({
                     name: `insert_tech_${tech}`,
                     query: 'INSERT INTO project_technologies (project_id, technology) VALUES (?, ?)',
                     params: [id, tech]
                 }));
                 
-                await transactionManager.executeBatch(techOperations);
+                await transactionManager.executeBatch(techOperations, {}, connection);
             }
 
             // Log update

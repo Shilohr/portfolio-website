@@ -120,20 +120,65 @@ class CacheManager {
         }
     }
 
-    // Invalidate cache by pattern
+    // Invalidate cache by pattern (with safe regex handling)
     invalidatePattern(pattern) {
         let deletedCount = 0;
-        const regex = new RegExp(pattern);
         
-        for (const [key] of this.cache.entries()) {
-            if (regex.test(key)) {
-                this.cache.delete(key);
-                deletedCount++;
+        // Validate and sanitize pattern to prevent ReDoS attacks
+        if (!pattern || typeof pattern !== 'string') {
+            logger.warn('Invalid pattern provided to invalidatePattern', null, { pattern });
+            return 0;
+        }
+        
+        // Limit pattern length and complexity
+        if (pattern.length > 200) {
+            logger.warn('Pattern too long for invalidatePattern', null, { patternLength: pattern.length });
+            return 0;
+        }
+        
+        // Block potentially dangerous regex patterns
+        const dangerousPatterns = [
+            /\(\?\=.*\*\)/,  // Lookahead with quantifiers
+            /\(\?\!.*\*\)/,  // Negative lookahead with quantifiers
+            /\(\?\:.*\{.*\}/, // Non-capturing groups with quantifiers
+            /\(\.\*\)\{/,     // Nested quantifiers
+            /\.\*\.\*\./,     // Multiple wildcards
+            /\(\.\*\*\)/,     // Nested quantifiers in groups
+        ];
+        
+        for (const dangerousPattern of dangerousPatterns) {
+            if (dangerousPattern.test(pattern)) {
+                logger.warn('Dangerous regex pattern blocked', null, { pattern });
+                return 0;
             }
         }
         
-        logger.info('Cache invalidated by pattern', null, { pattern, deletedCount });
-        return deletedCount;
+        try {
+            // Add timeout to regex execution to prevent hanging
+            const regex = new RegExp(pattern);
+            const startTime = Date.now();
+            const timeout = 5000; // 5 second timeout
+            
+            for (const [key] of this.cache.entries()) {
+                // Check timeout
+                if (Date.now() - startTime > timeout) {
+                    logger.warn('Regex pattern matching timed out', null, { pattern, processedKeys: deletedCount });
+                    break;
+                }
+                
+                if (regex.test(key)) {
+                    this.cache.delete(key);
+                    deletedCount++;
+                }
+            }
+            
+            logger.info('Cache invalidated by pattern', null, { pattern, deletedCount });
+            return deletedCount;
+            
+        } catch (error) {
+            logger.error('Invalid regex pattern in invalidatePattern', null, { pattern, error: error.message });
+            return 0;
+        }
     }
 
     // Evict least recently used items

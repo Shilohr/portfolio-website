@@ -63,15 +63,16 @@ class TransactionManager {
     }
 
     // Execute multiple operations in parallel within a transaction
-    async executeBatch(operations, options = {}) {
-        return this.execute(async (connection) => {
+    async executeBatch(operations, options = {}, existingConnection = null) {
+        if (existingConnection) {
+            // Use existing connection (within existing transaction)
             const results = [];
             
             for (const operation of operations) {
                 const { query, params, name } = operation;
                 
                 try {
-                    const [result] = await connection.execute(query, params);
+                    const [result] = await existingConnection.execute(query, params);
                     results.push({ name, success: true, result });
                     
                     logger.debug('Batch operation completed', null, { 
@@ -87,7 +88,33 @@ class TransactionManager {
             }
             
             return results;
-        }, options);
+        } else {
+            // Create new transaction
+            return this.execute(async (connection) => {
+                const results = [];
+                
+                for (const operation of operations) {
+                    const { query, params, name } = operation;
+                    
+                    try {
+                        const [result] = await connection.execute(query, params);
+                        results.push({ name, success: true, result });
+                        
+                        logger.debug('Batch operation completed', null, { 
+                            name, 
+                            affectedRows: result.affectedRows,
+                            insertId: result.insertId 
+                        });
+                        
+                    } catch (error) {
+                        results.push({ name, success: false, error: error.message });
+                        throw new Error(`Batch operation '${name}' failed: ${error.message}`);
+                    }
+                }
+                
+                return results;
+            }, options);
+        }
     }
 
     // Execute with retry logic
