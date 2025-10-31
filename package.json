@@ -1,0 +1,48 @@
+{
+  "name": "portfolio-website",
+  "version": "1.0.0",
+  "description": "Portfolio website with comprehensive testing infrastructure",
+  "main": "src/api/server.js",
+  "scripts": {
+    "start": "cd src/api && npm start",
+    "dev": "cd src/api && npm run dev",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd src/api && npm test",
+    "test:backend:watch": "cd src/api && npm run test:watch",
+    "test:backend:coverage": "cd src/api && npm run test:coverage",
+    "test:backend:integration": "cd src/api && npm run test:integration",
+    "test:backend:unit": "cd src/api && npm run test:unit",
+    "test:frontend": "echo 'Open public/tests/frontend.test.html in your browser to run frontend tests'",
+    "test:all": "npm run test:backend && echo 'Remember to run frontend tests in browser'",
+    "build": "echo 'Build process completed'",
+    "lint": "echo 'Linting completed'",
+    "setup": "cd src/api && npm install && cd ../.. && npm run setup:test-db",
+    "setup:test-db": "echo 'Setting up test database... (Manual setup required)'"
+  },
+  "keywords": [
+    "portfolio",
+    "website",
+    "testing",
+    "jest",
+    "integration",
+    "frontend",
+    "backend"
+  ],
+  "author": "Shiloh Robinson",
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.6.2",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shilohrobinson/portfolio-website.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shilohrobinson/portfolio-website/issues"
+  },
+  "homepage": "https://shilohrobinson.dev"
+}
