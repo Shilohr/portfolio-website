@@ -169,14 +169,14 @@ router.get('/', [
                 SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
                        p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id
                 FROM projects p
-                ${whereClause.replace('p.status = ?', 'p.status = ?')}
+                ${whereClause}
                 ORDER BY p.order_index ASC, p.created_at DESC
                 LIMIT ? OFFSET ?
             `, [...params, limitNum, offset]);
 
             // Get total count separately
             const [countResult] = await db.execute(`
-                SELECT COUNT(*) as total FROM projects p ${whereClause.replace('p.status = ?', 'p.status = ?')}
+                SELECT COUNT(*) as total FROM projects p ${whereClause}
             `, params);
             totalCount = countResult;
 

@@ -225,7 +225,12 @@ async save() {
         const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s+GROUP\s+BY|$)/i);
         if (whereMatch) {
             const whereClause = whereMatch[1];
-            data = this.applyWhereClause(data, whereClause, params);
+            // Count placeholders in WHERE clause only
+            const wherePlaceholderCount = (whereClause.match(/\?/g) || []).length;
+            const whereParams = params.slice(0, wherePlaceholderCount);
+            data = this.applyWhereClause(data, whereClause, whereParams);
+            // Remove WHERE parameters from the array, leaving LIMIT/OFFSET parameters
+            params = params.slice(wherePlaceholderCount);
         }
         
         // Apply ORDER BY
@@ -235,11 +240,12 @@ async save() {
             data = this.applyOrderBy(data, orderClause);
         }
         
-        // Apply LIMIT
-        const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
+        // Apply LIMIT and OFFSET
+        const limitMatch = sql.match(/LIMIT\s+(\d+)(?:\s+OFFSET\s+(\d+))?/i);
         if (limitMatch) {
             const limit = parseInt(limitMatch[1]);
-            data = data.slice(0, limit);
+            const offset = limitMatch[2] ? parseInt(limitMatch[2]) : 0;
+            data = data.slice(offset, offset + limit);
         }
         
         return data;
