@@ -1,7 +1,7 @@
 const request = require('supertest');
 const axios = require('axios');
 const express = require('express');
-const githubRoutes = require('../github');
+const githubRoutes = require('../routes/github');
 const TestHelpers = require('./helpers');
 
 // Mock axios to avoid actual GitHub API calls

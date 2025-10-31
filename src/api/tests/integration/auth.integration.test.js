@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 
 // Import the actual server
 const express = require('express');
-const authRoutes = require('../../auth');
+const authRoutes = require('../../routes/auth');
 
 describe('Authentication Integration Tests', () => {
   let app;

@@ -2,7 +2,7 @@ const request = require('supertest');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const express = require('express');
-const authRoutes = require('../auth');
+const authRoutes = require('../routes/auth');
 const TestHelpers = require('./helpers');
 
 describe('Authentication Tests', () => {

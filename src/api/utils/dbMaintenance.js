@@ -201,7 +201,7 @@ class DatabaseMaintenance {
                 deletedCount = result.affectedRows;
             } else {
                 // For JSON/SQLite adapters, use a different approach
-                const sessions = await this.pool.execute('SELECT * FROM user_sessions');
+                const [sessions] = await this.pool.execute('SELECT * FROM user_sessions');
                 const expiredSessions = sessions.filter(session => 
                     new Date(session.expires_at) < new Date() || !session.is_active
                 );

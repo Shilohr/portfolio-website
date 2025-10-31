@@ -6,9 +6,7 @@ module.exports = {
     '**/?(*.)+(spec|test).js'
   ],
   collectCoverageFrom: [
-    'auth.js',
-    'projects.js',
-    'github.js',
+    'routes/**/*.js',
     'server.js',
     'utils/**/*.js',
     '!**/node_modules/**',

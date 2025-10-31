@@ -3,7 +3,7 @@ const mysql = require('mysql2/promise');
 
 // Mock dependencies
 jest.mock('mysql2/promise');
-jest.mock('./utils/logger', () => ({
+jest.mock('../utils/logger', () => ({
   logger: {
     info: jest.fn(),
     error: jest.fn(),

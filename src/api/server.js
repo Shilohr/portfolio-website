@@ -14,7 +14,7 @@ const { errorHandler, sendSuccess, sendError } = require('./utils/errorHandler')
 const { commonValidations, handleValidationErrors } = require('./utils/validation');
 const DatabaseMaintenance = require('./utils/dbMaintenance');
 // Load environment variables before requiring modules that depend on them
-dotenv.config({ path: '../../../config/.env' });
+dotenv.config({ path: path.resolve(__dirname, '../../../config/.env') });
 
 const { cache } = require('./utils/cache');
 const { performanceMonitor, requestMonitor, monitorQuery } = require('./utils/performanceMonitor');
@@ -164,7 +164,7 @@ app.use('/api/auth/logout', csrfProtection);
 
 // SQLite database connection
 const pool = createPool({
-    database: '/app/portfolio.json'
+    database: process.env.DB_PATH || 'portfolio.json'
 });
 
 // Database connection pool monitoring
@@ -284,8 +284,6 @@ if (config.NODE_ENV === 'production') {
 }
 
 // Make database available to routes with performance monitoring
-// Static file serving - use the same directory as serveHtmlWithCSRF
-app.use(express.static(path.join(__dirname, '../../public')));
 
 // Database connection middleware - MUST be before routes that need database access
 app.use(async (req, res, next) => {
@@ -548,7 +546,7 @@ async function serveHtmlWithCSRF(req, res, htmlFile) {
     const path = require('path');
     
     try {
-        const filePath = path.join(__dirname, '../../public', htmlFile);
+        const filePath = path.join(__dirname, '../frontend', htmlFile);
         let html = await fs.readFile(filePath, 'utf8');
         
         // Check if CSRF token meta tag exists, if not add it
@@ -589,6 +587,20 @@ app.get('/', csrfProtection, async (req, res) => {
 app.get('/login.html', csrfProtection, async (req, res) => {
     await serveHtmlWithCSRF(req, res, 'login.html');
 });
+
+// Static file serving - serve assets only, not HTML files
+// This ensures dynamic routes with CSRF protection are handled first
+app.use(express.static(path.join(__dirname, '../../public'), {
+    // Don't serve index.html or login.html from static middleware
+    // Let the dynamic routes handle those with CSRF protection
+    index: false,
+    setHeaders: (res, path) => {
+        // Only serve static assets, not HTML files
+        if (path.endsWith('.html')) {
+            res.status(404).end();
+        }
+    }
+}));
 
 // Standardized error handling middleware
 app.use(errorHandler);

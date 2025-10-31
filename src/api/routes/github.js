@@ -112,10 +112,10 @@ router.post('/sync', [
                    typeof repo.id === 'number' &&
                    typeof repo.name === 'string' &&
                    typeof repo.full_name === 'string' &&
-                   typeof repo.description === 'string' &&
+                   (repo.description === null || repo.description === undefined || typeof repo.description === 'string') &&
                    typeof repo.html_url === 'string' &&
                    typeof repo.stargazers_count === 'number' &&
-                   typeof repo.language === 'string';
+                   (repo.language === null || repo.language === undefined || typeof repo.language === 'string');
         });
         
         if (sanitizedRepos.length === 0) {
@@ -150,11 +150,11 @@ router.post('/sync', [
                     id: repo.id.toString(),
                     name: (repo.name || '').substring(0, 255),
                     full_name: (repo.full_name || '').substring(0, 255),
-                    description: (repo.description || '').substring(0, 1000),
+                    description: (repo.description === null || repo.description === undefined ? '' : repo.description).substring(0, 1000),
                     html_url: (repo.html_url || '').substring(0, 500),
                     stargazers_count: Math.max(0, parseInt(repo.stargazers_count) || 0),
                     forks_count: Math.max(0, parseInt(repo.forks_count) || 0),
-                    language: (repo.language || '').substring(0, 100),
+                    language: (repo.language === null || repo.language === undefined ? '' : repo.language).substring(0, 100),
                     topics: Array.isArray(repo.topics) ? repo.topics.slice(0, 20).map(t => String(t).substring(0, 50)) : [],
                     private: Boolean(repo.private),
                     fork: Boolean(repo.fork)

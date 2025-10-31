@@ -33,12 +33,32 @@ const checkProjectOwnership = [customValidations.validateProjectId, async (req, 
         const db = req.db;
         
         // Check if user owns the project or is admin
-        const [projects] = await db.execute(`
-            SELECT p.*, u.role as user_role 
-            FROM projects p 
-            JOIN users u ON p.user_id = u.id 
-            WHERE p.id = ?
-        `, [id]);
+        let projects;
+        try {
+            [projects] = await db.execute(`
+                SELECT p.*, u.role as user_role 
+                FROM projects p 
+                JOIN users u ON p.user_id = u.id 
+                WHERE p.id = ?
+            `, [id]);
+        } catch (error) {
+            // Fallback for JSON adapter
+            logger.warn('Using fallback query for ownership check (JSON adapter)', req, { error: error.message });
+            
+            [projects] = await db.execute(`
+                SELECT * FROM projects WHERE id = ?
+            `, [id]);
+            
+            if (projects.length > 0) {
+                const project = projects[0];
+                try {
+                    const [users] = await db.execute('SELECT role FROM users WHERE id = ?', [project.user_id]);
+                    project.user_role = users.length > 0 ? users[0].role : null;
+                } catch (e) {
+                    project.user_role = null;
+                }
+            }
+        }
         
         if (projects.length === 0) {
             return sendError(res, 'NOT_FOUND', 'Project not found');
@@ -120,22 +140,65 @@ router.get('/', [
             params.push(user_id);
         }
 
-        const [projects] = await db.execute(`
-            SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
-                   p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
-                   u.username as owner_username,
-                   GROUP_CONCAT(DISTINCT pt.technology ORDER BY pt.technology) as technologies,
-                   COUNT(*) OVER() as total_count
-            FROM projects p
-            LEFT JOIN project_technologies pt ON p.id = pt.project_id
-            LEFT JOIN users u ON p.user_id = u.id
-            ${whereClause}
-            GROUP BY p.id, u.username
-            ORDER BY p.order_index ASC, p.created_at DESC
-            LIMIT ? OFFSET ?
-        `, [...params, limitNum, offset]);
+        let projects, totalCount;
+        
+        try {
+            // Try the full SQL query with JOINs and aggregates
+            [projects] = await db.execute(`
+                SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
+                       p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
+                       u.username as owner_username,
+                       GROUP_CONCAT(DISTINCT pt.technology ORDER BY pt.technology) as technologies,
+                       COUNT(*) OVER() as total_count
+                FROM projects p
+                LEFT JOIN project_technologies pt ON p.id = pt.project_id
+                LEFT JOIN users u ON p.user_id = u.id
+                ${whereClause}
+                GROUP BY p.id, u.username
+                ORDER BY p.order_index ASC, p.created_at DESC
+                LIMIT ? OFFSET ?
+            `, [...params, limitNum, offset]);
 
-        const totalCount = projects.length > 0 ? [{ total: projects[0].total_count }] : [{ total: 0 }];
+            totalCount = projects.length > 0 ? [{ total: projects[0].total_count }] : [{ total: 0 }];
+        } catch (error) {
+            // Fallback for JSON adapter - handle missing SQL features
+            logger.warn('Using fallback query for JSON adapter compatibility', req, { error: error.message });
+            
+            // Get basic projects without JOINs
+            [projects] = await db.execute(`
+                SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
+                       p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id
+                FROM projects p
+                ${whereClause.replace('p.status = ?', 'p.status = ?')}
+                ORDER BY p.order_index ASC, p.created_at DESC
+                LIMIT ? OFFSET ?
+            `, [...params, limitNum, offset]);
+
+            // Get total count separately
+            const [countResult] = await db.execute(`
+                SELECT COUNT(*) as total FROM projects p ${whereClause.replace('p.status = ?', 'p.status = ?')}
+            `, params);
+            totalCount = countResult;
+
+            // Enrich projects with additional data
+            for (const project of projects) {
+                // Get username
+                try {
+                    const [users] = await db.execute('SELECT username FROM users WHERE id = ?', [project.user_id]);
+                    project.owner_username = users.length > 0 ? users[0].username : null;
+                } catch (e) {
+                    project.owner_username = null;
+                }
+
+                // Get technologies
+                try {
+                    const [techResult] = await db.execute('SELECT technology FROM project_technologies WHERE project_id = ?', [project.id]);
+                    project.technologies = techResult.map(t => t.technology).join(',');
+                } catch (e) {
+                    project.technologies = '';
+                }
+            }
+        }
 
         // Parse technologies and remove total_count from response
         const projectsWithTech = projects.map(project => {
@@ -149,6 +212,12 @@ router.get('/', [
                 technologies
             };
         });
+
+        // Ensure total_count is properly set for JSON adapter fallback
+        if (projects.length > 0 && !projects[0].hasOwnProperty('total_count')) {
+            // In JSON adapter mode, total_count comes from separate query
+            // Make sure we use the totalCount from the separate count query
+        }
 
         sendSuccess(res, {
             projects: projectsWithTech,
@@ -179,17 +248,53 @@ router.get('/:id', [
         const { id } = req.params;
         const db = req.db;
 
-        const [projects] = await db.execute(`
-            SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
-                   p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
-                   u.username as owner_username,
-                   GROUP_CONCAT(DISTINCT pt.technology ORDER BY pt.technology) as technologies
-            FROM projects p
-            LEFT JOIN project_technologies pt ON p.id = pt.project_id
-            LEFT JOIN users u ON p.user_id = u.id
-            WHERE p.id = ? AND p.status = 'active'
-            GROUP BY p.id, u.username
-        `, [id]);
+        let projects;
+        
+        try {
+            // Try the full SQL query with JOINs and aggregates
+            [projects] = await db.execute(`
+                SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
+                       p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
+                       u.username as owner_username,
+                       GROUP_CONCAT(DISTINCT pt.technology ORDER BY pt.technology) as technologies
+                FROM projects p
+                LEFT JOIN project_technologies pt ON p.id = pt.project_id
+                LEFT JOIN users u ON p.user_id = u.id
+                WHERE p.id = ? AND p.status = 'active'
+                GROUP BY p.id, u.username
+            `, [id]);
+        } catch (error) {
+            // Fallback for JSON adapter
+            logger.warn('Using fallback query for single project (JSON adapter)', req, { error: error.message });
+            
+            [projects] = await db.execute(`
+                SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
+                       p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id
+                FROM projects p
+                WHERE p.id = ? AND p.status = 'active'
+            `, [id]);
+
+            // Enrich with additional data
+            if (projects.length > 0) {
+                const project = projects[0];
+                
+                // Get username
+                try {
+                    const [users] = await db.execute('SELECT username FROM users WHERE id = ?', [project.user_id]);
+                    project.owner_username = users.length > 0 ? users[0].username : null;
+                } catch (e) {
+                    project.owner_username = null;
+                }
+
+                // Get technologies
+                try {
+                    const [techResult] = await db.execute('SELECT technology FROM project_technologies WHERE project_id = ?', [project.id]);
+                    project.technologies = techResult.map(t => t.technology).join(',');
+                } catch (e) {
+                    project.technologies = '';
+                }
+            }
+        }
 
         if (projects.length === 0) {
             return sendError(res, 'NOT_FOUND', 'Project not found');

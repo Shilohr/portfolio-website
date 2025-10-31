@@ -72,8 +72,6 @@ class JSONAdapter {
         this.data = null;
         this.initialized = false;
         this.writeMutex = new WriteMutex();
-        this.transactionInProgress = false;
-        this.transactionData = null;
     }
 
     async connect() {
@@ -114,11 +112,6 @@ class JSONAdapter {
     }
 
 async save() {
-        // Don't save if transaction is in progress (will be saved on commit)
-        if (this.transactionInProgress) {
-            return;
-        }
-        
         // Use mutex to prevent concurrent writes
         await this.writeMutex.acquire();
         try {
@@ -139,7 +132,7 @@ async save() {
         logger.info('JSON query executing', null, { sql, params: sanitizeParamsForLogging(params) });
         
         // Parse SQL and convert to JSON operations
-        const result = await this.executeSQL(sql, params);
+        const result = await this.executeSQL(sql, params, this._connectionContext);
         
         logger.info('JSON query success', null, { rowCount: result.length });
         return result;
@@ -152,11 +145,11 @@ async save() {
         const trimmedSql = sql.trim().toUpperCase();
         if (trimmedSql.startsWith('SELECT') || trimmedSql.startsWith('WITH')) {
             // For SELECT queries, return rows
-            const rows = await this.executeSQL(sql, params);
+            const rows = await this.executeSQL(sql, params, this._connectionContext);
             return [rows]; // Return as array to match MySQL format
         } else {
             // For INSERT/UPDATE/DELETE queries, execute and return result
-            const result = await this.executeSQL(sql, params);
+            const result = await this.executeSQL(sql, params, this._connectionContext);
             return [{
                 insertId: result.insertId || 0, 
                 affectedRows: result.affectedRows || 0,
@@ -165,18 +158,18 @@ async save() {
         }
     }
 
-    async executeSQL(sql, params) {
+    async executeSQL(sql, params, connectionContext = null) {
         const trimmedSql = sql.trim().toUpperCase();
         
         // Simple SQL parser for basic operations
         if (trimmedSql.startsWith('SELECT')) {
-            return this.executeSelect(sql, params);
+            return this.executeSelect(sql, params, connectionContext);
         } else if (trimmedSql.startsWith('INSERT')) {
-            return await this.executeInsert(sql, params);
+            return await this.executeInsert(sql, params, connectionContext);
         } else if (trimmedSql.startsWith('UPDATE')) {
-            return await this.executeUpdate(sql, params);
+            return await this.executeUpdate(sql, params, connectionContext);
         } else if (trimmedSql.startsWith('DELETE')) {
-            return await this.executeDelete(sql, params);
+            return await this.executeDelete(sql, params, connectionContext);
         } else if (trimmedSql.startsWith('CREATE')) {
             return this.executeCreate(sql, params);
         } else {
@@ -184,7 +177,12 @@ async save() {
         }
     }
 
-    executeSelect(sql, params) {
+    executeSelect(sql, params, connectionContext = null) {
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+        
         // Handle special case for health check query
         if (sql.includes('SELECT 1 as test')) {
             return [{ test: 1 }];
@@ -200,7 +198,7 @@ async save() {
             if (tableName === 'user_sessions') {
                 tableName = 'sessions';
             }
-            let data = this.data[tableName] || [];
+            let data = dataSource[tableName] || [];
             
             // Apply WHERE conditions for COUNT
             const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s+GROUP\s+BY|$)/i);
@@ -221,7 +219,7 @@ async save() {
         if (tableName === 'user_sessions') {
             tableName = 'sessions';
         }
-        let data = this.data[tableName] || [];
+        let data = dataSource[tableName] || [];
         
         // Apply WHERE conditions (basic implementation)
         const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s+GROUP\s+BY|$)/i);
@@ -247,7 +245,7 @@ async save() {
         return data;
     }
 
-    async executeInsert(sql, params) {
+    async executeInsert(sql, params, connectionContext = null) {
         const tableMatch = sql.match(/INSERT\s+INTO\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
@@ -256,8 +254,14 @@ async save() {
         if (tableName === 'user_sessions') {
             tableName = 'sessions';
         }
-        if (!this.data[tableName]) {
-            this.data[tableName] = [];
+        
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+            
+        if (!dataSource[tableName]) {
+            dataSource[tableName] = [];
         }
         
         // Simple INSERT implementation
@@ -275,25 +279,26 @@ async save() {
         
         // Add auto-increment ID if not present
         if (!newRecord.id) {
-            const maxId = this.data[tableName].reduce((max, record) => 
-                Math.max(max, record.id || 0), 0);
-            newRecord.id = maxId + 1;
+            // For ID generation, use timestamp + random to ensure uniqueness
+            // This avoids ID conflicts across concurrent operations
+            const timestamp = Date.now();
+            const random = Math.floor(Math.random() * 1000);
+            newRecord.id = parseInt(`${timestamp}${random.toString().padStart(3, '0')}`);
         }
         
-        this.data[tableName].push(newRecord);
+        dataSource[tableName].push(newRecord);
         
-        // Only save immediately if not in a transaction
-        if (!this.transactionInProgress) {
-            try {
-                await this.save();
-            } catch (error) {
-                // Rollback the insert if save failed
-                const index = this.data[tableName].findIndex(r => r.id === newRecord.id);
-                if (index !== -1) {
-                    this.data[tableName].splice(index, 1);
-                }
-                throw error;
+        // Use connection context for save if available
+        const saveMethod = connectionContext ? connectionContext.save.bind(connectionContext) : this.save.bind(this);
+        try {
+            await saveMethod();
+        } catch (error) {
+            // Rollback the insert if save failed
+            const index = dataSource[tableName].findIndex(r => r.id === newRecord.id);
+            if (index !== -1) {
+                dataSource[tableName].splice(index, 1);
             }
+            throw error;
         }
         
         return { 
@@ -302,7 +307,7 @@ async save() {
         };
     }
 
-    async executeUpdate(sql, params) {
+    async executeUpdate(sql, params, connectionContext = null) {
         const tableMatch = sql.match(/UPDATE\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
@@ -311,7 +316,13 @@ async save() {
         if (tableName === 'user_sessions') {
             tableName = 'sessions';
         }
-        let data = this.data[tableName] || [];
+        
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+            
+        let data = dataSource[tableName] || [];
         
         // Apply WHERE conditions
         const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+LIMIT|$)/i);
@@ -331,7 +342,7 @@ async save() {
             let affectedRows = 0;
             
             data.forEach(record => {
-                const originalData = this.data[tableName].find(r => r.id === record.id);
+                const originalData = dataSource[tableName].find(r => r.id === record.id);
                 if (originalData) {
                     originalStates.push({
                         id: originalData.id,
@@ -342,20 +353,19 @@ async save() {
                 }
             });
             
-            // Only save immediately if not in a transaction
-            if (!this.transactionInProgress) {
-                try {
-                    await this.save();
-                } catch (error) {
-                    // Rollback updates if save failed
-                    originalStates.forEach(({ id, data: originalData }) => {
-                        const index = this.data[tableName].findIndex(r => r.id === id);
-                        if (index !== -1) {
-                            this.data[tableName][index] = originalData;
-                        }
-                    });
-                    throw error;
-                }
+            // Use connection context for save if available
+            const saveMethod = connectionContext ? connectionContext.save.bind(connectionContext) : this.save.bind(this);
+            try {
+                await saveMethod();
+            } catch (error) {
+                // Rollback updates if save failed
+                originalStates.forEach(({ id, data: originalData }) => {
+                    const index = dataSource[tableName].findIndex(r => r.id === id);
+                    if (index !== -1) {
+                        dataSource[tableName][index] = originalData;
+                    }
+                });
+                throw error;
             }
             
             return { affectedRows };
@@ -364,7 +374,7 @@ async save() {
         return { affectedRows: 0 };
     }
 
-    async executeDelete(sql, params) {
+    async executeDelete(sql, params, connectionContext = null) {
         const tableMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
@@ -373,7 +383,13 @@ async save() {
         if (tableName === 'user_sessions') {
             tableName = 'sessions';
         }
-        let data = this.data[tableName] || [];
+        
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+            
+        let data = dataSource[tableName] || [];
         
         // Apply WHERE conditions
         const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+LIMIT|$)/i);
@@ -382,22 +398,21 @@ async save() {
             const toDelete = this.applyWhereClause([...data], whereClause, params);
             
             // Store original data for rollback
-            const originalData = [...this.data[tableName]];
+            const originalData = [...dataSource[tableName]];
             
             // Remove records
-            this.data[tableName] = data.filter(record => 
+            dataSource[tableName] = data.filter(record => 
                 !toDelete.some(deleteRecord => deleteRecord.id === record.id)
             );
             
-            // Only save immediately if not in a transaction
-            if (!this.transactionInProgress) {
-                try {
-                    await this.save();
-                } catch (error) {
-                    // Rollback deletion if save failed
-                    this.data[tableName] = originalData;
-                    throw error;
-                }
+            // Use connection context for save if available
+            const saveMethod = connectionContext ? connectionContext.save.bind(connectionContext) : this.save.bind(this);
+            try {
+                await saveMethod();
+            } catch (error) {
+                // Rollback deletion if save failed
+                dataSource[tableName] = originalData;
+                throw error;
             }
             
             return { affectedRows: toDelete.length };
@@ -575,6 +590,81 @@ async save() {
     async release() {
         // No-op for JSON adapter
     }
+}
+
+// Connection wrapper that provides isolated transaction state
+class JSONConnection {
+    constructor(sharedAdapter) {
+        this.sharedAdapter = sharedAdapter;
+        this.transactionInProgress = false;
+        this.transactionData = null;
+    }
+
+    async connect() {
+        // Delegate to shared adapter
+        return this.sharedAdapter.connect();
+    }
+
+    async query(sql, params = []) {
+        await this.sharedAdapter.ensureInitialized();
+        
+        // Set connection context and use shared adapter's query method
+        this.sharedAdapter._connectionContext = this;
+        try {
+            return await this.sharedAdapter.executeSQL(sql, params, this);
+        } finally {
+            this.sharedAdapter._connectionContext = null;
+        }
+    }
+
+    async execute(sql, params = []) {
+        await this.sharedAdapter.ensureInitialized();
+        
+        // Set connection context and use shared adapter's execute method
+        this.sharedAdapter._connectionContext = this;
+        try {
+            const trimmedSql = sql.trim().toUpperCase();
+            if (trimmedSql.startsWith('SELECT') || trimmedSql.startsWith('WITH')) {
+                // For SELECT queries, return rows
+                const rows = await this.sharedAdapter.executeSQL(sql, params, this);
+                return [rows]; // Return as array to match MySQL format
+            } else {
+                // For INSERT/UPDATE/DELETE queries, execute and return result
+                const result = await this.sharedAdapter.executeSQL(sql, params, this);
+                return [{
+                    insertId: result.insertId || 0, 
+                    affectedRows: result.affectedRows || 0,
+                    changedRows: result.changedRows || 0
+                }];
+            }
+        } finally {
+            this.sharedAdapter._connectionContext = null;
+        }
+    }
+
+    // Override save to handle transaction state
+    async save() {
+        // Don't save if transaction is in progress (will be saved on commit)
+        if (this.transactionInProgress) {
+            return;
+        }
+        return this.sharedAdapter.save();
+    }
+
+    async close() {
+        // Clean up transaction state if any
+        if (this.transactionInProgress) {
+            await this.rollback();
+        }
+        return this.sharedAdapter.close();
+    }
+
+    async release() {
+        // Clean up transaction state if any
+        if (this.transactionInProgress) {
+            await this.rollback();
+        }
+    }
 
     async beginTransaction() {
         if (this.transactionInProgress) {
@@ -582,12 +672,12 @@ async save() {
         }
         
         // Create a deep copy of current data for rollback
-        this.transactionData = JSON.parse(JSON.stringify(this.data));
+        this.transactionData = JSON.parse(JSON.stringify(this.sharedAdapter.data));
         this.transactionInProgress = true;
         
         logger.debug('Transaction started', null, { 
-            dbPath: this.dbPath,
-            dataKeys: Object.keys(this.data)
+            dbPath: this.sharedAdapter.dbPath,
+            dataKeys: Object.keys(this.sharedAdapter.data)
         });
         
         return [];
@@ -599,13 +689,51 @@ async save() {
         }
         
         try {
-            // Save any pending changes
-            await this.save();
+            // Start with current shared data (which may have been modified by other connections)
+            const mergedData = JSON.parse(JSON.stringify(this.sharedAdapter.data));
+            
+            // For each table in transaction data, merge it properly
+            for (const [tableName, transactionRecords] of Object.entries(this.transactionData)) {
+                if (Array.isArray(transactionRecords)) {
+                    // For array tables, we need to merge intelligently
+                    if (!mergedData[tableName]) {
+                        mergedData[tableName] = [];
+                    }
+                    
+                    // Create a map of existing records by ID from current shared data
+                    const existingMap = new Map();
+                    mergedData[tableName].forEach(record => {
+                        if (record.id) {
+                            existingMap.set(record.id, record);
+                        }
+                    });
+                    
+                    // Add/update records from transaction, taking precedence
+                    transactionRecords.forEach(record => {
+                        if (record.id) {
+                            existingMap.set(record.id, record);
+                        }
+                    });
+                    
+                    // Convert back to array, sorted by ID for consistency
+                    mergedData[tableName] = Array.from(existingMap.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
+                } else {
+                    // For non-array data, transaction data takes precedence
+                    mergedData[tableName] = transactionRecords;
+                }
+            }
+            
+            // Update shared adapter with merged data
+            this.sharedAdapter.data = mergedData;
+            
+            // Save the committed changes
+            await this.sharedAdapter.save();
+            
             this.transactionData = null;
             this.transactionInProgress = false;
             
             logger.debug('Transaction committed', null, { 
-                dbPath: this.dbPath
+                dbPath: this.sharedAdapter.dbPath
             });
             
             return [];
@@ -623,22 +751,18 @@ async save() {
         }
         
         try {
-            // Restore data from transaction snapshot
-            if (this.transactionData) {
-                this.data = this.transactionData;
-                this.transactionData = null;
-            }
-            
+            // Simply discard transaction data - don't copy it back
+            this.transactionData = null;
             this.transactionInProgress = false;
             
             logger.debug('Transaction rolled back', null, { 
-                dbPath: this.dbPath
+                dbPath: this.sharedAdapter.dbPath
             });
             
             return [];
         } catch (error) {
             logger.error('Error during transaction rollback', error, { 
-                dbPath: this.dbPath
+                dbPath: this.sharedAdapter.dbPath
             });
             // Ensure transaction state is cleared even on error
             this.transactionInProgress = false;
@@ -652,7 +776,7 @@ async save() {
 class JSONPool {
     constructor(config) {
         const dbPath = config.database || config.name || 'portfolio.json';
-        this.adapter = new JSONAdapter(dbPath);
+        this.sharedAdapter = new JSONAdapter(dbPath);
         this.connected = false;
         
         // Add MySQL-compatible pool properties for monitoring
@@ -666,16 +790,23 @@ class JSONPool {
 
     async getConnection() {
         if (!this.connected) {
-            await this.adapter.connect();
+            await this.sharedAdapter.connect();
             this.connected = true;
         }
-        return this.adapter;
+        // Return a new connection instance with isolated transaction state
+        return new JSONConnection(this.sharedAdapter);
     }
 
     async query(sql, params = []) {
         // Get a connection and delegate to the adapter's query method
         const connection = await this.getConnection();
         return await connection.query(sql, params);
+    }
+
+    async execute(sql, params = []) {
+        // Get a connection and delegate to the adapter's execute method
+        const connection = await this.getConnection();
+        return await connection.execute(sql, params);
     }
 
     on(event, callback) {

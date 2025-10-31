@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 
 // Import the actual server
 const express = require('express');
-const projectsRoutes = require('../../projects');
+const projectsRoutes = require('../../routes/projects');
 
 describe('Projects Integration Tests', () => {
   let app;
