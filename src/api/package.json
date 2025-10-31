@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "Portfolio website backend API",
   "main": "server.js",
+  "engines": {
+    "node": ">=16 <25"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "postinstall": "npm rebuild sharp",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -42,7 +46,7 @@
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.6.0",
     "node-cron": "^3.0.3",
-    "sharp": "^0.32.4",
+    "sharp": "^0.34.4",
     "sqlite3": "^5.1.7",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",

@@ -12,6 +12,7 @@ WORKDIR /app
 COPY src/api/package*.json ./api/
 RUN cd api && \
     npm ci --only=production && \
+    npm run postinstall && \
     npm cache clean --force && \
     chown -R appuser:appgroup /app
 
