@@ -89,6 +89,13 @@ export async function makeAPIRequest(url, options = {}) {
             }
         }
         
+        // Handle authentication errors
+        if (response.status === 401) {
+            console.warn(' Authentication failed, session may have expired');
+            // Don't automatically retry 401 errors - let the handleAPIResponse deal with them
+            return response;
+        }
+        
         return response;
         
     } catch (error) {
@@ -167,6 +174,16 @@ export async function handleAPIResponse(response, errorMessage = 'API request fa
         let userMessage = errorMessage;
         if (errorData.error) {
             switch (errorData.code) {
+                case 'UNAUTHORIZED':
+                    userMessage = 'Authentication required. Please log in again.';
+                    // Redirect to login page after a short delay
+                    setTimeout(() => {
+                        window.location.href = '/login.html';
+                    }, 2000);
+                    break;
+                case 'FORBIDDEN':
+                    userMessage = 'Access denied. Admin privileges required.';
+                    break;
                 case 'CONFIG_ERROR':
                     userMessage = 'GitHub configuration issue. Syncing public repositories without authentication.';
                     break;

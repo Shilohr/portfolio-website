@@ -135,15 +135,28 @@ async function handleGitHubSync() {
     if (!syncGithubBtn) return;
     
     try {
-        // Ensure CSRF token is available before making request
-        if (!window.csrfToken) {
-            console.warn('CSRF token not available, waiting...');
-            // Wait a bit for CSRF token to initialize
-            await new Promise(resolve => setTimeout(resolve, 500));
+        // Ensure we have a fresh CSRF token before making request
+        try {
+            // Try to refresh the CSRF token to ensure it's valid
+            const response = await fetch('/api/csrf-token', {
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                }
+            });
             
-            if (!window.csrfToken) {
-                throw new Error('CSRF token not available. Please refresh the page and try again.');
+            if (response.ok) {
+                const data = await response.json();
+                window.csrfToken = data.csrfToken;
+                
             }
+        } catch (error) {
+            console.warn('Failed to refresh CSRF token:', error);
+        }
+        
+        if (!window.csrfToken) {
+            throw new Error('CSRF token not available. Please refresh the page and try again.');
         }
         
         const originalText = syncGithubBtn.textContent;
