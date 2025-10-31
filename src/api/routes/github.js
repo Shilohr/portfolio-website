@@ -2,6 +2,24 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const axios = require('axios');
 const { authenticateToken, requireAdmin } = require('./auth');
+
+// Middleware to require admin or developer role
+const requireAdminOrDeveloper = (req, res, next) => {
+    if (!req.user) {
+        return sendError(res, 'UNAUTHORIZED', 'Authentication required');
+    }
+
+    if (req.user.role !== 'admin' && req.user.role !== 'developer') {
+        logger.warn('Unauthorized access attempt', req, {
+            userId: req.user.userId,
+            userRole: req.user.role,
+            attemptedPath: req.originalUrl
+        });
+        return sendError(res, 'FORBIDDEN', 'Admin or Developer privileges required');
+    }
+
+    next();
+};
 const { logger } = require('../utils/logger');
 const { sendError, sendSuccess, createErrorResponse } = require('../utils/errorHandler');
 const { commonValidations, handleValidationErrors, sanitizers } = require('../utils/validation');
@@ -43,10 +61,10 @@ const validateSync = [
     commonValidations.githubUsername
 ];
 
-// Cache GitHub repositories (requires authentication and admin privileges)
+// Cache GitHub repositories (requires authentication and admin/developer privileges)
 router.post('/sync', [
     authenticateToken,
-    requireAdmin,
+    requireAdminOrDeveloper,
     githubRateLimiter,
     validateSync,
     handleValidationErrors
@@ -129,102 +147,83 @@ router.post('/sync', [
             });
         }
         
-        // Use transaction manager for batch operations
-        const transactionManager = createTransactionManager(db);
-        
-        const result = await transactionManager.execute(async (connection) => {
-            let syncedCount = 0;
-            const operations = [];
+        // Use direct database operations to avoid transaction conflicts
+        let syncedCount = 0;
 
-            for (const repo of sanitizedRepos) {
-                // Validate required fields
-                if (!repo.id || !repo.name || !repo.full_name) {
-                    logger.warn('Skipping repository with missing required fields', req, { 
-                        repo: repo.name || 'unknown' 
-                    });
-                    continue;
-                }
-                
-                // Sanitize and limit field lengths
-                const sanitizedRepo = {
-                    id: repo.id.toString(),
-                    name: (repo.name || '').substring(0, 255),
-                    full_name: (repo.full_name || '').substring(0, 255),
-                    description: (repo.description === null || repo.description === undefined ? '' : repo.description).substring(0, 1000),
-                    html_url: (repo.html_url || '').substring(0, 500),
-                    stargazers_count: Math.max(0, parseInt(repo.stargazers_count) || 0),
-                    forks_count: Math.max(0, parseInt(repo.forks_count) || 0),
-                    language: (repo.language === null || repo.language === undefined ? '' : repo.language).substring(0, 100),
-                    topics: Array.isArray(repo.topics) ? repo.topics.slice(0, 20).map(t => String(t).substring(0, 50)) : [],
-                    private: Boolean(repo.private),
-                    fork: Boolean(repo.fork)
-                };
-                
-                // Check if repo already exists
-                const [existing] = await connection.execute(
-                    'SELECT id FROM github_repos WHERE repo_id = ?',
-                    [sanitizedRepo.id]
-                );
-
-                if (existing.length === 0) {
-                    // Insert new repository
-                    operations.push({
-                        name: `insert_repo_${sanitizedRepo.id}`,
-                        query: `
-                            INSERT INTO github_repos 
-                            (repo_id, name, full_name, description, html_url, stars, forks, language, topics, is_private, is_fork)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        `,
-                        params: [
-                            sanitizedRepo.id,
-                            sanitizedRepo.name,
-                            sanitizedRepo.full_name,
-                            sanitizedRepo.description,
-                            sanitizedRepo.html_url,
-                            sanitizedRepo.stargazers_count,
-                            sanitizedRepo.forks_count,
-                            sanitizedRepo.language,
-                            JSON.stringify(sanitizedRepo.topics),
-                            sanitizedRepo.private,
-                            sanitizedRepo.fork
-                        ]
-                    });
-                } else {
-                    // Update existing repository
-                    operations.push({
-                        name: `update_repo_${sanitizedRepo.id}`,
-                        query: `
-                            UPDATE github_repos 
-                            SET name = ?, full_name = ?, description = ?, html_url = ?, 
-                                stars = ?, forks = ?, language = ?, topics = ?, 
-                                is_private = ?, is_fork = ?, last_sync = CURRENT_TIMESTAMP
-                            WHERE repo_id = ?
-                        `,
-                        params: [
-                            sanitizedRepo.name,
-                            sanitizedRepo.full_name,
-                            sanitizedRepo.description,
-                            sanitizedRepo.html_url,
-                            sanitizedRepo.stargazers_count,
-                            sanitizedRepo.forks_count,
-                            sanitizedRepo.language,
-                            JSON.stringify(sanitizedRepo.topics),
-                            sanitizedRepo.private,
-                            sanitizedRepo.fork,
-                            sanitizedRepo.id
-                        ]
-                    });
-                }
+        for (const repo of sanitizedRepos) {
+            // Validate required fields
+            if (!repo.id || !repo.name || !repo.full_name) {
+                logger.warn('Skipping repository with missing required fields', req, { 
+                    repo: repo.name || 'unknown' 
+                });
+                continue;
             }
+            
+            // Sanitize and limit field lengths
+            const sanitizedRepo = {
+                id: repo.id.toString(),
+                name: (repo.name || '').substring(0, 255),
+                full_name: (repo.full_name || '').substring(0, 255),
+                description: (repo.description === null || repo.description === undefined ? '' : repo.description).substring(0, 1000),
+                html_url: (repo.html_url || '').substring(0, 500),
+                stargazers_count: Math.max(0, parseInt(repo.stargazers_count) || 0),
+                forks_count: Math.max(0, parseInt(repo.forks_count) || 0),
+                language: (repo.language === null || repo.language === undefined ? '' : repo.language).substring(0, 100),
+                topics: Array.isArray(repo.topics) ? repo.topics.slice(0, 20).map(t => String(t).substring(0, 50)) : [],
+                private: Boolean(repo.private),
+                fork: Boolean(repo.fork)
+            };
+            
+            // Check if repo already exists
+            const [existing] = await db.execute(
+                'SELECT id FROM github_repos WHERE repo_id = ?',
+                [sanitizedRepo.id]
+            );
 
-            // Execute all operations in batch
-            if (operations.length > 0) {
-                const results = await transactionManager.executeBatch(operations);
-                syncedCount = results.filter(r => r.success).length;
+            if (existing.length === 0) {
+                // Insert new repository
+                await db.execute(`
+                    INSERT INTO github_repos 
+                    (repo_id, name, full_name, description, html_url, stars, forks, language, topics, is_private, is_fork)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    sanitizedRepo.id,
+                    sanitizedRepo.name,
+                    sanitizedRepo.full_name,
+                    sanitizedRepo.description,
+                    sanitizedRepo.html_url,
+                    sanitizedRepo.stargazers_count,
+                    sanitizedRepo.forks_count,
+                    sanitizedRepo.language,
+                    JSON.stringify(sanitizedRepo.topics),
+                    sanitizedRepo.private,
+                    sanitizedRepo.fork
+                ]);
+                syncedCount++;
+            } else {
+                // Update existing repository
+                await db.execute(`
+                    UPDATE github_repos 
+                    SET name = ?, full_name = ?, description = ?, html_url = ?, 
+                        stars = ?, forks = ?, language = ?, topics = ?, 
+                        is_private = ?, is_fork = ?, last_sync = CURRENT_TIMESTAMP
+                    WHERE repo_id = ?
+                `, [
+                    sanitizedRepo.name,
+                    sanitizedRepo.full_name,
+                    sanitizedRepo.description,
+                    sanitizedRepo.html_url,
+                    sanitizedRepo.stargazers_count,
+                    sanitizedRepo.forks_count,
+                    sanitizedRepo.language,
+                    JSON.stringify(sanitizedRepo.topics),
+                    sanitizedRepo.private,
+                    sanitizedRepo.fork,
+                    sanitizedRepo.id
+                ]);
+                syncedCount++;
             }
-
-            return syncedCount;
-        });
+        }
 
         const syncedCount = result;
 

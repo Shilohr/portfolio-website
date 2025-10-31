@@ -17,5 +17,23 @@
   "sessions": [],
   "audit_log": [],
   "github_cache": {},
-  "github_repos": []
+  "github_repos": [
+    {
+      "id": 1,
+      "repo_id": "1086882174",
+      "name": "portfolio-website",
+      "full_name": "Shilohr/portfolio-website",
+      "description": "Modern retro space-themed portfolio website with GitHub integration",
+      "html_url": "https://github.com/Shilohr/portfolio-website",
+      "stars": 0,
+      "forks": 0,
+      "language": "JavaScript",
+      "topics": ["portfolio", "website", "github-api"],
+      "is_private": false,
+      "is_fork": false,
+      "created_at": "2025-10-31T23:40:00.000Z",
+      "updated_at": "2025-10-31T23:40:00.000Z",
+      "last_sync": "2025-10-31T23:40:00.000Z"
+    }
+  ]
 }

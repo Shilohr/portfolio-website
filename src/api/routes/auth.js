@@ -207,10 +207,11 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
             const newAttempts = user.login_attempts + 1;
             const lockedUntil = newAttempts >= MAX_LOGIN_ATTEMPTS ? Date.now() + LOCK_TIME : null;
 
-            await db.execute(
-                'UPDATE users SET login_attempts = ?, locked_until = ? WHERE id = ?',
-                [newAttempts, lockedUntil, user.id]
-            );
+            // Update login attempts using separate operations to avoid JSON adapter issues
+            await db.execute(`UPDATE users SET login_attempts = ${newAttempts} WHERE id = ${user.id}`);
+            if (lockedUntil) {
+                await db.execute(`UPDATE users SET locked_until = ${lockedUntil} WHERE id = ${user.id}`);
+            }
 
             logger.security('LOGIN_ATTEMPT_INVALID_PASSWORD', req, newAttempts >= MAX_LOGIN_ATTEMPTS ? 'high' : 'medium', { 
                 userId: user.id,
@@ -476,6 +477,19 @@ const requireAdmin = (req, res, next) => {
 
     next();
 };
+
+// Debug route to check current authentication status
+router.get('/debug', authenticateToken, async (req, res) => {
+    try {
+        sendSuccess(res, {
+            user: req.user,
+            headers: req.headers,
+            cookies: req.cookies
+        }, 'Authentication debug info');
+    } catch (error) {
+        sendError(res, 'DEBUG_ERROR', 'Failed to get debug info');
+    }
+});
 
 // Protected route example
 router.get('/profile', authenticateToken, async (req, res) => {

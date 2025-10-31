@@ -2,6 +2,9 @@
 // ADMIN DASHBOARD JAVASCRIPT
 // ===================================
 
+// Import CSRF protection
+import { initializeCSRFProtection } from './utils/security.js';
+
 // Utility Functions
 const utils = {
     // CSRF Token management
@@ -323,6 +326,13 @@ class AdminDashboard {
         // Only initialize if authenticated
         if (!this.auth.isAuthenticated()) {
             return;
+        }
+
+        // Initialize CSRF protection for API requests
+        try {
+            await initializeCSRFProtection();
+        } catch (error) {
+            console.warn('Failed to initialize CSRF protection:', error);
         }
 
         this.setupEventListeners();
