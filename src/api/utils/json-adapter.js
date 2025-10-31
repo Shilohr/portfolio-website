@@ -269,17 +269,28 @@ class JSONAdapter {
         // Very basic WHERE clause implementation
         // This is a simplified version - in production you'd want a proper SQL parser
         return data.filter(record => {
-            // Handle basic equality conditions
-            const conditions = whereClause.split('AND').map(c => c.trim());
-            return conditions.every(condition => {
-                const match = condition.match(/(\w+)\s*=\s*\?/i);
-                if (match && params.length > 0) {
-                    const column = match[1];
-                    return record[column] == params[0]; // Use == for loose comparison
-                }
-                return true; // If we can't parse, include it
+            // Handle basic equality conditions with AND/OR
+            const orConditions = whereClause.split('OR').map(c => c.trim());
+            
+            return orConditions.some(orCondition => {
+                const andConditions = orCondition.split('AND').map(c => c.trim());
+                return andConditions.every(andCondition => {
+                    const match = andCondition.match(/(\w+)\s*=\s*\?/i);
+                    if (match && params.length > 0) {
+                        const column = match[1];
+                        const paramIndex = this.getParamIndex(whereClause, andCondition);
+                        return record[column] == params[paramIndex]; // Use == for loose comparison
+                    }
+                    return true; // If we can't parse, include it
+                });
             });
         });
+    }
+    
+    getParamIndex(fullWhereClause, specificCondition) {
+        // Find the parameter index for a specific condition within the full WHERE clause
+        const conditions = fullWhereClause.split(/\s+(?:AND|OR)\s+/i);
+        return conditions.findIndex(c => c.trim() === specificCondition.trim());
     }
 
     applyOrderBy(data, orderClause) {
