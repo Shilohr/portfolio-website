@@ -1,0 +1,54 @@
+{
+  "projects": [],
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@example.com",
+      "password_hash": "$2a$10$N1UP1fN8TtyCv3Ka4J82eequg4EQwGxUzC0yD5IDo/rrPYq6LThae",
+      "role": "admin",
+      "is_active": true,
+      "login_attempts": 1,
+      "locked_until": null,
+      "created_at": "2025-10-31T11:12:23.952Z",
+      "updated_at": "2025-10-31T11:12:23.952Z"
+    }
+  ],
+  "sessions": [],
+  "audit_log": [
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 1
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 2
+    }
+  ],
+  "github_cache": {},
+  "github_repos": [],
+  "user_sessions": [
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$8wD36Ff76ZdIv9HJ3VHpHewrRX4DID6ahSiTyaEUNcpnG2arfhu1K",
+      "expires_at": "2025-11-01T11:19:01.043Z",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 1
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$T4sEemL2eIgdj581vrN6G.AwQyjQjdKo5uYsxeLJza.b6Gdg5ZmZe",
+      "expires_at": "2025-11-01T11:19:34.641Z",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 2
+    }
+  ]
+}

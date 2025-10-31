@@ -7,7 +7,17 @@ class TransactionManager {
 
     // Execute a function within a database transaction
     async execute(transactionFn, options = {}) {
-        const connection = await this.db.getConnection();
+        // Check if db is already a connection or if it's a pool
+        let connection;
+        if (typeof this.db.execute === 'function' && typeof this.db.getConnection === 'function') {
+            // This is a pool, get a connection
+            connection = await this.db.getConnection();
+        } else if (typeof this.db.execute === 'function') {
+            // This is already a connection, use it directly
+            connection = this.db;
+        } else {
+            throw new Error('Invalid database object: must be a pool or connection');
+        }
         
         try {
             await connection.beginTransaction();
@@ -45,7 +55,10 @@ class TransactionManager {
             throw error;
             
         } finally {
-            connection.release();
+            // Only release if we got the connection from a pool
+            if (connection !== this.db && typeof connection.release === 'function') {
+                connection.release();
+            }
         }
     }
 

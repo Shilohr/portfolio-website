@@ -280,8 +280,8 @@ if (config.NODE_ENV === 'production') {
 }
 
 // Make database available to routes with performance monitoring
-// Static file serving
-app.use(express.static('/var/www/html'));
+// Static file serving - use the same directory as serveHtmlWithCSRF
+app.use(express.static(path.join(__dirname, '../../public')));
 
 // Database connection middleware - MUST be before routes that need database access
 app.use(async (req, res, next) => {
@@ -513,13 +513,13 @@ app.post('/api/admin/maintenance', [
  * @param {Object} res - Express response object
  * @param {string} htmlFile - HTML file to serve
  */
-function serveHtmlWithCSRF(req, res, htmlFile) {
-    const fs = require('fs');
+async function serveHtmlWithCSRF(req, res, htmlFile) {
+    const fs = require('fs').promises;
     const path = require('path');
     
     try {
         const filePath = path.join(__dirname, '../../public', htmlFile);
-        let html = fs.readFileSync(filePath, 'utf8');
+        let html = await fs.readFile(filePath, 'utf8');
         
         // Check if CSRF token meta tag exists, if not add it
         if (!html.includes('csrf-token')) {
@@ -549,15 +549,15 @@ function serveHtmlWithCSRF(req, res, htmlFile) {
 /**
  * Serves the main index.html with injected CSRF token
  */
-app.get('/', csrfProtection, (req, res) => {
-    serveHtmlWithCSRF(req, res, 'index.html');
+app.get('/', csrfProtection, async (req, res) => {
+    await serveHtmlWithCSRF(req, res, 'index.html');
 });
 
 /**
  * Serves login.html with injected CSRF token
  */
-app.get('/login.html', csrfProtection, (req, res) => {
-    serveHtmlWithCSRF(req, res, 'login.html');
+app.get('/login.html', csrfProtection, async (req, res) => {
+    await serveHtmlWithCSRF(req, res, 'login.html');
 });
 
 // Standardized error handling middleware

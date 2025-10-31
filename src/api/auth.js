@@ -88,10 +88,11 @@ const generateToken = (userId, username, role) => {
 
 // Routes
 router.post('/register', validateRegister, handleValidationErrors, async (req, res) => {
-    try {
+    // Extract variables outside try block for error logging access
+    const { username, email, password } = req.body;
+    const db = req.db;
 
-        const { username, email, password } = req.body;
-        const db = req.db;
+    try {
 
         // Check if user already exists
         const [existingUsers] = await db.execute(
@@ -223,8 +224,19 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
         }
 
         // Use database transaction for atomic operations
-        const connection = await db.getConnection();
+        let connection;
         try {
+            // Check if db is already a connection or if it's a pool
+            if (typeof db.execute === 'function' && typeof db.getConnection === 'function') {
+                // This is a pool, get a connection
+                connection = await db.getConnection();
+            } else if (typeof db.execute === 'function') {
+                // This is already a connection, use it directly
+                connection = db;
+            } else {
+                throw new Error('Invalid database object: must be a pool or connection');
+            }
+            
             await connection.beginTransaction();
             
             // Reset login attempts on successful login
@@ -285,7 +297,10 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
             await connection.rollback();
             throw error;
         } finally {
-            connection.release();
+            // Only release if we got the connection from a pool
+            if (connection !== db && typeof connection.release === 'function') {
+                connection.release();
+            }
         }
 
     } catch (error) {
@@ -309,11 +324,29 @@ router.post('/logout', async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         const db = req.db;
 
-        // Invalidate session
-        await db.execute(
-            'UPDATE user_sessions SET is_active = FALSE WHERE user_id = ? AND token_hash = ?',
-            [decoded.userId, await hashPassword(token)]
+        // Get active sessions for user and find matching token
+        const [sessions] = await db.execute(
+            'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
+            [decoded.userId]
         );
+
+        // Find the session that matches our token
+        let sessionToInvalidate = null;
+        for (const session of sessions) {
+            const isValid = await comparePassword(token, session.token_hash);
+            if (isValid) {
+                sessionToInvalidate = session;
+                break;
+            }
+        }
+
+        // Invalidate the matching session
+        if (sessionToInvalidate) {
+            await db.execute(
+                'UPDATE user_sessions SET is_active = FALSE WHERE id = ?',
+                [sessionToInvalidate.id]
+            );
+        }
 
         // Log logout
         await db.execute(
