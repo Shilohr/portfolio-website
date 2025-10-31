@@ -1,14 +1,19 @@
 const bcrypt = require('bcryptjs');
-const fs = require('fs').promises;
+const fs = require('fs');
 const path = require('path');
 
 async function createAdminUser() {
     try {
-        // Path to the JSON database
-        const dbPath = '/app/portfolio.json';
+        // Path to the JSON database - use same logic as JSONAdapter
+        let dbPath;
+        if (fs.existsSync('/app')) {
+            dbPath = '/app/portfolio.json';
+        } else {
+            dbPath = path.resolve(__dirname, '../../../portfolio.json');
+        }
         
         // Read current database
-        const data = JSON.parse(await fs.readFile(dbPath, 'utf8'));
+        const data = JSON.parse(await fs.promises.readFile(dbPath, 'utf8'));
         
         // Hash the password
         const passwordHash = await bcrypt.hash('admin123', 12);
@@ -31,7 +36,7 @@ async function createAdminUser() {
         data.users.push(adminUser);
         
         // Save database
-        await fs.writeFile(dbPath, JSON.stringify(data, null, 2));
+        await fs.promises.writeFile(dbPath, JSON.stringify(data, null, 2));
         
         console.log('✅ Admin user created successfully!');
         console.log('Username: admin');

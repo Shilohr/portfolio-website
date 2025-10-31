@@ -14,14 +14,14 @@ const { errorHandler, sendSuccess, sendError } = require('./utils/errorHandler')
 const { commonValidations, handleValidationErrors } = require('./utils/validation');
 const DatabaseMaintenance = require('./utils/dbMaintenance');
 // Load environment variables before requiring modules that depend on them
-dotenv.config({ path: '../../.env' });
+dotenv.config({ path: '../../../config/.env' });
 
 const { cache } = require('./utils/cache');
 const { performanceMonitor, requestMonitor, monitorQuery } = require('./utils/performanceMonitor');
-const authRoutes = require('./auth');
-const projectsRoutes = require('./projects');
-const githubRoutes = require('./github');
-const { authenticateToken, requireAdmin } = require('./auth');
+const authRoutes = require('./routes/auth');
+const projectsRoutes = require('./routes/projects');
+const githubRoutes = require('./routes/github');
+const { authenticateToken, requireAdmin } = require('./routes/auth');
 
 // Validate environment configuration on startup
 let config;

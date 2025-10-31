@@ -2,11 +2,11 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const axios = require('axios');
 const { authenticateToken, requireAdmin } = require('./auth');
-const { logger } = require('./utils/logger');
-const { sendError, sendSuccess, createErrorResponse } = require('./utils/errorHandler');
-const { commonValidations, handleValidationErrors, sanitizers } = require('./utils/validation');
-const { cache } = require('./utils/cache');
-const { createTransactionManager } = require('./utils/transaction');
+const { logger } = require('../utils/logger');
+const { sendError, sendSuccess, createErrorResponse } = require('../utils/errorHandler');
+const { commonValidations, handleValidationErrors, sanitizers } = require('../utils/validation');
+const { cache } = require('../utils/cache');
+const { createTransactionManager } = require('../utils/transaction');
 const router = express.Router();
 
 const GITHUB_API_BASE = 'https://api.github.com';

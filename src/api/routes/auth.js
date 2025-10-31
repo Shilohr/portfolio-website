@@ -1,11 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { logger } = require('./utils/logger');
-const { sendError, sendSuccess, createErrorResponse } = require('./utils/errorHandler');
-const { commonValidations, handleValidationErrors } = require('./utils/validation');
-const { cache } = require('./utils/cache');
-const { createTransactionManager } = require('./utils/transaction');
+const { logger } = require('../utils/logger');
+const { sendError, sendSuccess, createErrorResponse } = require('../utils/errorHandler');
+const { commonValidations, handleValidationErrors } = require('../utils/validation');
+const { cache } = require('../utils/cache');
+const { createTransactionManager } = require('../utils/transaction');
 const router = express.Router();
 
 // Always ensure JWT_SECRET exists
