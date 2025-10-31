@@ -288,6 +288,21 @@ app.use(async (req, res, next) => {
     try {
         const connection = await pool.getConnection();
         req.db = connection; // Temporarily bypass monitorQuery
+        
+        // Ensure connection is released when response finishes
+        res.on('finish', () => {
+            if (connection && typeof connection.release === 'function') {
+                connection.release();
+            }
+        });
+        
+        // Also release on close (for aborted requests)
+        res.on('close', () => {
+            if (connection && typeof connection.release === 'function') {
+                connection.release();
+            }
+        });
+        
         next();
     } catch (error) {
         logger.error('Database connection failed', error);

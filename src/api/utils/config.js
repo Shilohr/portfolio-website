@@ -12,9 +12,8 @@ const envSchema = Joi.object({
             'string.min': 'DB_PASSWORD must be at least 32 characters in production',
             'any.required': 'DB_PASSWORD is required in production'
         }),
-        otherwise: Joi.string().min(16).required().messages({
-            'string.min': 'DB_PASSWORD must be at least 16 characters in development',
-            'any.required': 'DB_PASSWORD is required in all environments'
+        otherwise: Joi.string().min(16).optional().messages({
+            'string.min': 'DB_PASSWORD must be at least 16 characters in development'
         })
     }),
     DB_NAME: Joi.string().default('portfolio'),
@@ -24,11 +23,12 @@ const envSchema = Joi.object({
             'string.min': 'DB_ROOT_PASSWORD must be at least 32 characters in production',
             'any.required': 'DB_ROOT_PASSWORD is required in production'
         }),
-        otherwise: Joi.string().min(16).required().messages({
-            'string.min': 'DB_ROOT_PASSWORD must be at least 16 characters in development',
-            'any.required': 'DB_ROOT_PASSWORD is required in all environments'
+        otherwise: Joi.string().min(16).optional().messages({
+            'string.min': 'DB_ROOT_PASSWORD must be at least 16 characters in development'
         })
     }),
+    // Add database type indicator
+    DB_TYPE: Joi.string().valid('mysql', 'json').default('json'),
 
     // JWT Configuration
     JWT_SECRET: Joi.string().when('NODE_ENV', {
@@ -160,7 +160,11 @@ function validateConfig() {
     }
 
     // Validate required environment variables are present
-    const requiredVars = ['DB_PASSWORD', 'JWT_SECRET', 'DB_ROOT_PASSWORD'];
+    // Only require DB credentials if using MySQL
+    const isJsonDb = envVars.DB_TYPE === 'json';
+    const requiredVars = isJsonDb 
+        ? ['JWT_SECRET'] 
+        : ['DB_PASSWORD', 'JWT_SECRET', 'DB_ROOT_PASSWORD'];
     const missingVars = requiredVars.filter(varName => !envVars[varName] || envVars[varName].trim() === '');
     
     if (missingVars.length > 0) {
@@ -170,10 +174,16 @@ function validateConfig() {
     // Additional security checks for production
     if (envVars.NODE_ENV === 'production') {
         const securityChecks = [
-            { var: 'JWT_SECRET', value: envVars.JWT_SECRET },
-            { var: 'DB_PASSWORD', value: envVars.DB_PASSWORD },
-            { var: 'DB_ROOT_PASSWORD', value: envVars.DB_ROOT_PASSWORD }
+            { var: 'JWT_SECRET', value: envVars.JWT_SECRET }
         ];
+        
+        // Only check DB credentials if using MySQL
+        if (envVars.DB_TYPE !== 'json') {
+            securityChecks.push(
+                { var: 'DB_PASSWORD', value: envVars.DB_PASSWORD },
+                { var: 'DB_ROOT_PASSWORD', value: envVars.DB_ROOT_PASSWORD }
+            );
+        }
 
         for (const check of securityChecks) {
             if (detectWeakValues(check.value, check.var)) {
@@ -204,6 +214,7 @@ function validateConfig() {
         environment: envVars.NODE_ENV,
         port: envVars.PORT,
         database: {
+            type: envVars.DB_TYPE,
             host: envVars.DB_HOST,
             user: envVars.DB_USER,
             name: envVars.DB_NAME,

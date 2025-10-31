@@ -408,7 +408,7 @@ const authenticateToken = (req, res, next) => {
         try {
             const db = req.db;
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ?',
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
                 [decoded.userId]
             );
 

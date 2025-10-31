@@ -420,6 +420,14 @@ class JSONPool {
         const dbPath = config.database || config.name || 'portfolio.json';
         this.adapter = new JSONAdapter(dbPath);
         this.connected = false;
+        
+        // Add MySQL-compatible pool properties for monitoring
+        this._allConnections = [];
+        this._freeConnections = [];
+        this._connectionQueue = [];
+        this.config = {
+            connectionLimit: config.connectionLimit || 10
+        };
     }
 
     async getConnection() {
@@ -452,5 +460,5 @@ class JSONPool {
 module.exports = {
     JSONAdapter,
     JSONPool,
-    createPool: (config) => new JSONPool(config.database || 'portfolio.json')
+    createPool: (config) => new JSONPool(config)
 };
