@@ -1,4 +1,4 @@
-const fs = require('fs').promises;
+const fs = require('fs');
 const path = require('path');
 const { logger } = require('./logger');
 
@@ -57,9 +57,15 @@ function sanitizeParamsForLogging(params) {
 
 class JSONAdapter {
     constructor(dbPath = 'portfolio.json') {
-        // If dbPath is just a filename, look for it in /app directory
+        // If dbPath is just a filename, determine the appropriate path
         if (!path.isAbsolute(dbPath) && !dbPath.includes('/')) {
-            this.dbPath = path.join('/app', dbPath);
+            // Check if we're in production (Docker) by looking for /app directory
+            if (fs.existsSync('/app')) {
+                this.dbPath = path.join('/app', dbPath);
+            } else {
+                // Local development - use project root
+                this.dbPath = path.resolve(__dirname, '../../..', dbPath);
+            }
         } else {
             this.dbPath = path.resolve(__dirname, '../../..', dbPath);
         }
@@ -86,7 +92,7 @@ class JSONAdapter {
     async initializeDatabase() {
         try {
             // Try to read existing data
-            const data = await fs.readFile(this.dbPath, 'utf8');
+            const data = await fs.promises.readFile(this.dbPath, 'utf8');
             this.data = JSON.parse(data);
         } catch (err) {
             if (err.code === 'ENOENT') {
@@ -116,7 +122,7 @@ async save() {
         // Use mutex to prevent concurrent writes
         await this.writeMutex.acquire();
         try {
-            await fs.writeFile(this.dbPath, JSON.stringify(this.data, null, 2), 'utf8');
+            await fs.promises.writeFile(this.dbPath, JSON.stringify(this.data, null, 2), 'utf8');
         } catch (error) {
             logger.error('Failed to save JSON database', null, { 
                 error: error.message,
@@ -127,47 +133,13 @@ async save() {
             this.writeMutex.release();
         }
     }
-        
-        // Serialize writes to prevent race conditions
-        if (this.writeLock) {
-            return new Promise((resolve, reject) => {
-                this.writeQueue.push({ resolve, reject });
-            });
-        }
-
-        this.writeLock = true;
-        try {
-            await fs.writeFile(this.dbPath, JSON.stringify(this.data, null, 2), 'utf8');
-            
-            // Resolve any queued writes
-            while (this.writeQueue.length > 0) {
-                const { resolve } = this.writeQueue.shift();
-                resolve();
-            }
-        } catch (error) {
-            logger.error('Failed to save JSON database', null, { 
-                error: error.message,
-                dbPath: this.dbPath
-            });
-            
-            // Reject any queued writes
-            while (this.writeQueue.length > 0) {
-                const { reject } = this.writeQueue.shift();
-                reject(error);
-            }
-            
-            throw error;
-        } finally {
-            this.writeLock = false;
-        }
-    }
 
     async query(sql, params = []) {
         await this.ensureInitialized();
         logger.info('JSON query executing', null, { sql, params: sanitizeParamsForLogging(params) });
         
         // Parse SQL and convert to JSON operations
-        const result = this.executeSQL(sql, params);
+        const result = await this.executeSQL(sql, params);
         
         logger.info('JSON query success', null, { rowCount: result.length });
         return result;
@@ -180,11 +152,11 @@ async save() {
         const trimmedSql = sql.trim().toUpperCase();
         if (trimmedSql.startsWith('SELECT') || trimmedSql.startsWith('WITH')) {
             // For SELECT queries, return rows
-            const rows = this.executeSQL(sql, params);
+            const rows = await this.executeSQL(sql, params);
             return [rows]; // Return as array to match MySQL format
         } else {
             // For INSERT/UPDATE/DELETE queries, execute and return result
-            const result = this.executeSQL(sql, params);
+            const result = await this.executeSQL(sql, params);
             return [{
                 insertId: result.insertId || 0, 
                 affectedRows: result.affectedRows || 0,
@@ -193,7 +165,7 @@ async save() {
         }
     }
 
-    executeSQL(sql, params) {
+    async executeSQL(sql, params) {
         const trimmedSql = sql.trim().toUpperCase();
         
         // Simple SQL parser for basic operations

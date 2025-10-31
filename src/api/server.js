@@ -198,7 +198,6 @@ pool.on('enqueue', () => {
         freeConnections: pool._freeConnections?.length || 0
     });
 });
-});
 
 // Initialize database maintenance
 const dbMaintenance = new DatabaseMaintenance(pool);
@@ -216,14 +215,14 @@ setInterval(() => {
         };
         
         logger.info('Database pool health check', null, poolStats);
-    }
-    
-    // Alert if pool is under stress
-    if (poolStats.queuedRequests > 0) {
-        logger.warn('Database pool under stress', null, {
-            ...poolStats,
-            alert: 'High queue length detected'
-        });
+        
+        // Alert if pool is under stress
+        if (poolStats.queuedRequests > 0) {
+            logger.warn('Database pool under stress', null, {
+                ...poolStats,
+                alert: 'High queue length detected'
+            });
+        }
     }
 }, 300000); // Check every 5 minutes
 
