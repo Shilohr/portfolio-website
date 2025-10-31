@@ -207,10 +207,10 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
             const newAttempts = user.login_attempts + 1;
             const lockedUntil = newAttempts >= MAX_LOGIN_ATTEMPTS ? Date.now() + LOCK_TIME : null;
 
-            // Update login attempts using separate operations to avoid JSON adapter issues
-            await db.execute(`UPDATE users SET login_attempts = ${newAttempts} WHERE id = ${user.id}`);
+            // Update login attempts using parameterized queries for JSON adapter compatibility
+            await db.execute('UPDATE users SET login_attempts = ? WHERE id = ?', [newAttempts, user.id]);
             if (lockedUntil) {
-                await db.execute(`UPDATE users SET locked_until = ${lockedUntil} WHERE id = ${user.id}`);
+                await db.execute('UPDATE users SET locked_until = ? WHERE id = ?', [lockedUntil, user.id]);
             }
 
             logger.security('LOGIN_ATTEMPT_INVALID_PASSWORD', req, newAttempts >= MAX_LOGIN_ATTEMPTS ? 'high' : 'medium', { 

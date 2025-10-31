@@ -330,19 +330,30 @@ async save() {
             
         let data = dataSource[tableName] || [];
         
-        // Apply WHERE conditions
-        const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+LIMIT|$)/i);
-        if (whereMatch) {
-            const whereClause = whereMatch[1];
-            data = this.applyWhereClause(data, whereClause, params);
+        // Parse SET clause and extract SET parameters
+        const setMatch = sql.match(/SET\s+(.+?)(?:\s+WHERE|$)/i);
+        let setParams = [];
+        let updates = {};
+        
+        if (setMatch) {
+            const setClause = setMatch[1];
+            const setPlaceholderCount = (setClause.match(/\?/g) || []).length;
+            setParams = params.slice(0, setPlaceholderCount);
+            updates = this.parseSetClause(setClause, setParams);
         }
         
-        // Apply SET operations (simplified)
-        const setMatch = sql.match(/SET\s+(.+?)(?:\s+WHERE|$)/i);
-        if (setMatch && params.length > 0) {
-            const setClause = setMatch[1];
-            const updates = this.parseSetClause(setClause, params);
-            
+        // Parse WHERE clause and extract WHERE parameters
+        const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+LIMIT|$)/i);
+        let whereParams = [];
+        
+        if (whereMatch) {
+            const whereClause = whereMatch[1];
+            whereParams = params.slice(setParams.length); // Remaining params are for WHERE
+            data = this.applyWhereClause(data, whereClause, whereParams);
+        }
+        
+        // Apply SET operations if we have updates
+        if (Object.keys(updates).length > 0) {
             // Store original state for rollback
             const originalStates = [];
             let affectedRows = 0;
@@ -824,7 +835,7 @@ class JSONPool {
     }
 
     async end() {
-        return this.adapter.close();
+        return this.sharedAdapter.close();
     }
 }
 
