@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Shiloh Robinson</title>
+    <meta name="description" content="Admin login for Shiloh Robinson's portfolio">
+    <link rel="stylesheet" href="/style.css?v=1.0.0">
+</head>
+<body>
+    <!-- Background System -->
+    <div class="background-container" id="backgroundContainer">
+        <img src="/assets/images/weic2208a.jpg" alt="Space Background 1" class="background-image active">
+        <img src="/assets/images/weic2301a.jpg" alt="Space Background 2" class="background-image">
+        <img src="/assets/images/weic2425a.jpg" alt="Space Background 3" class="background-image">
+        <img src="/assets/images/weic2513a.jpg" alt="Space Background 4" class="background-image">
+    </div>
+
+    <!-- Starfield Effect -->
+    <div class="starfield" id="starfield"></div>
+
+    <!-- CRT Effect -->
+    <div class="crt-effect"></div>
+
+    <!-- Login Container -->
+    <div class="login-container">
+        <div class="login-form">
+            <h1 class="login-title neon-text">Admin Access</h1>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label" for="username">Username</label>
+                    <input type="text" id="username" name="username" class="form-input" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" required>
+                </div>
+                
+                <button type="submit" class="retro-button" style="width: 100%;">Login</button>
+            </form>
+            
+            <div id="loginMessage"></div>
+            
+            <div class="text-center mt-2">
+                <a href="/" class="project-link">← Back to Portfolio</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/script.js?v=1.0.0"></script>
+    <script src="/auth.js?v=1.0.0"></script>
+</body>
+</html>

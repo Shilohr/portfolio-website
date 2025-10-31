@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shiloh Robinson - Portfolio</title>
+    <meta name="description" content="Modern retro space-themed portfolio showcasing Shiloh Robinson's projects and skills">
+    <meta name="keywords" content="portfolio, developer, projects, space, retro, modern">
+    <meta name="author" content="Shiloh Robinson">
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Shiloh Robinson - Portfolio">
+    <meta property="og:description" content="Modern retro space-themed portfolio">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://shilohrobinson.dev">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="/style.css?v=1.0.0">
+    
+    <!-- Preload Critical Resources -->
+    <link rel="preload" href="/assets/images/weic2208a.jpg" as="image">
+    <link rel="preload" href="/assets/images/weic2301a.jpg" as="image">
+    <link rel="preload" href="/assets/images/weic2425a.jpg" as="image">
+    <link rel="preload" href="/assets/images/weic2513a.jpg" as="image">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="page-loader" id="pageLoader">
+        <div class="loader-content">
+            <h1 class="loader-title neon-pink">Initializing Portfolio</h1>
+            <div class="typing-cursor"></div>
+        </div>
+    </div>
+
+    <!-- Background System -->
+    <div class="background-container" id="backgroundContainer">
+        <img src="/assets/images/weic2208a.jpg" alt="Space Background 1" class="background-image active">
+        <img src="/assets/images/weic2301a.jpg" alt="Space Background 2" class="background-image">
+        <img src="/assets/images/weic2425a.jpg" alt="Space Background 3" class="background-image">
+        <img src="/assets/images/weic2513a.jpg" alt="Space Background 4" class="background-image">
+    </div>
+
+    <!-- Starfield Effect -->
+    <div class="starfield" id="starfield"></div>
+
+    <!-- CRT Effect -->
+    <div class="crt-effect"></div>
+
+    <!-- Navigation -->
+    <nav class="navigation" id="navigation">
+        <div class="nav-container">
+            <a href="#home" class="nav-logo neon-text">SR</a>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="#home" class="nav-link active">Home</a></li>
+                <li><a href="#projects" class="nav-link">Projects</a></li>
+                <li><a href="#github" class="nav-link">GitHub</a></li>
+                <li><a href="#contact" class="nav-link">Contact</a></li>
+                <li><a href="/login.html" class="nav-link">Admin</a></li>
+            </ul>
+            <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <h1 class="hero-title neon-text">Shiloh Robinson</h1>
+            <div class="hero-subtitle">
+                <span id="typingText"></span>
+                <span class="typing-cursor"></span>
+            </div>
+            <p class="hero-description">
+                Crafting digital experiences with modern retro aesthetics. 
+                Full-stack developer passionate about cosmic design and innovative solutions.
+            </p>
+            <div class="hero-buttons">
+                <a href="#projects" class="retro-button">View Projects</a>
+                <a href="#contact" class="retro-button">Get In Touch</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Projects Section -->
+    <section class="section" id="projects">
+        <h2 class="section-title neon-text">Featured Projects</h2>
+        <div class="projects-grid" id="projectsGrid">
+            <!-- Projects will be loaded here via JavaScript -->
+        </div>
+        <div class="text-center mt-3">
+            <a href="/projects.html" class="retro-button">View All Projects</a>
+        </div>
+    </section>
+
+    <!-- GitHub Section -->
+    <section class="section" id="github">
+        <h2 class="section-title neon-text">GitHub Activity</h2>
+        <div class="github-container" id="githubContainer">
+            <!-- GitHub repositories will be loaded here -->
+        </div>
+        <div class="text-center mt-3">
+            <button class="retro-button" id="syncGithub">Sync GitHub</button>
+            <a href="https://github.com/shilohrobinson" target="_blank" class="retro-button">View on GitHub</a>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section class="section contact" id="contact">
+        <h2 class="section-title neon-text">Get In Touch</h2>
+        <div class="contact-info">
+            <div class="contact-item">
+                <div class="contact-icon">📧</div>
+                <div class="contact-label">Email</div>
+                <div class="contact-value" id="emailValue">contact@shilohrobinson.dev</div>
+                <button class="copy-button" data-copy="emailValue">Copy Email</button>
+            </div>
+            <div class="contact-item">
+                <div class="contact-icon">💼</div>
+                <div class="contact-label">LinkedIn</div>
+                <div class="contact-value" id="linkedinValue">linkedin.com/in/shilohrobinson</div>
+                <button class="copy-button" data-copy="linkedinValue">Copy URL</button>
+            </div>
+            <div class="contact-item">
+                <div class="contact-icon">🐙</div>
+                <div class="contact-label">GitHub</div>
+                <div class="contact-value" id="githubValue">github.com/shilohrobinson</div>
+                <button class="copy-button" data-copy="githubValue">Copy URL</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="section">
+        <div class="text-center">
+            <p>&copy; 2024 Shiloh Robinson. Designed with cosmic energy.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/js/script.js?v=1.0.0"></script>
+</body>
+</html>

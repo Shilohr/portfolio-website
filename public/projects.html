@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projects - Shiloh Robinson</title>
+    <meta name="description" content="Browse all projects by Shiloh Robinson">
+    <link rel="stylesheet" href="/style.css?v=1.0.0">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="page-loader" id="pageLoader">
+        <div class="loader-content">
+            <h1 class="loader-title neon-pink">Loading Projects</h1>
+            <div class="typing-cursor"></div>
+        </div>
+    </div>
+
+    <!-- Background System -->
+    <div class="background-container" id="backgroundContainer">
+        <img src="/assets/images/weic2208a.jpg" alt="Space Background 1" class="background-image active">
+        <img src="/assets/images/weic2301a.jpg" alt="Space Background 2" class="background-image">
+        <img src="/assets/images/weic2425a.jpg" alt="Space Background 3" class="background-image">
+        <img src="/assets/images/weic2513a.jpg" alt="Space Background 4" class="background-image">
+    </div>
+
+    <!-- Starfield Effect -->
+    <div class="starfield" id="starfield"></div>
+
+    <!-- CRT Effect -->
+    <div class="crt-effect"></div>
+
+    <!-- Navigation -->
+    <nav class="navigation" id="navigation">
+        <div class="nav-container">
+            <a href="/" class="nav-logo neon-text">SR</a>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="/" class="nav-link">Home</a></li>
+                <li><a href="/projects.html" class="nav-link active">Projects</a></li>
+                <li><a href="/#github" class="nav-link">GitHub</a></li>
+                <li><a href="/#contact" class="nav-link">Contact</a></li>
+                <li><a href="/login.html" class="nav-link">Admin</a></li>
+            </ul>
+            <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Projects Header -->
+    <section class="section">
+        <div class="projects-header">
+            <h1 class="section-title neon-text">All Projects</h1>
+            <div class="projects-filters">
+                <select class="form-select" id="languageFilter">
+                    <option value="">All Languages</option>
+                    <option value="JavaScript">JavaScript</option>
+                    <option value="Python">Python</option>
+                    <option value="TypeScript">TypeScript</option>
+                    <option value="Go">Go</option>
+                    <option value="Rust">Rust</option>
+                </select>
+                <select class="form-select" id="sortFilter">
+                    <option value="stars">Most Stars</option>
+                    <option value="updated">Recently Updated</option>
+                    <option value="name">Name A-Z</option>
+                </select>
+                <input type="text" class="form-input" id="searchInput" placeholder="Search projects...">
+            </div>
+        </div>
+        
+        <div class="projects-grid" id="allProjectsGrid">
+            <!-- All projects will be loaded here -->
+        </div>
+        
+        <div class="pagination" id="pagination">
+            <!-- Pagination controls will be added here -->
+        </div>
+    </section>
+
+    <!-- JavaScript -->
+    <script src="/script.js?v=1.0.0"></script>
+    <script src="/projects.js?v=1.0.0"></script>
+</body>
+</html>

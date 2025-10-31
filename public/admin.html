@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Shiloh Robinson</title>
+    <meta name="description" content="Admin dashboard for managing portfolio projects">
+    <link rel="stylesheet" href="/style.css?v=1.0.0">
+    <link rel="stylesheet" href="/admin.css?v=1.0.0">
+</head>
+<body>
+    <!-- Background System -->
+    <div class="background-container" id="backgroundContainer">
+        <img src="/assets/images/weic2208a.jpg" alt="Space Background 1" class="background-image active">
+        <img src="/assets/images/weic2301a.jpg" alt="Space Background 2" class="background-image">
+        <img src="/assets/images/weic2425a.jpg" alt="Space Background 3" class="background-image">
+        <img src="/assets/images/weic2513a.jpg" alt="Space Background 4" class="background-image">
+    </div>
+
+    <!-- Starfield Effect -->
+    <div class="starfield" id="starfield"></div>
+
+    <!-- CRT Effect -->
+    <div class="crt-effect"></div>
+
+    <!-- Admin Container -->
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1 class="admin-title neon-text">Admin Dashboard</h1>
+            <div class="admin-nav">
+                <button class="admin-button" id="addProjectBtn">Add Project</button>
+                <button class="admin-button" id="syncGithubBtn">Sync GitHub</button>
+                <button class="admin-button" id="logoutBtn">Logout</button>
+            </div>
+        </div>
+
+        <!-- Project Form (Hidden by default) -->
+        <div class="project-form hidden" id="projectForm">
+            <h2 class="neon-text">Add/Edit Project</h2>
+            <form id="projectManageForm">
+                <div class="form-group">
+                    <label class="form-label" for="projectTitle">Title *</label>
+                    <input type="text" id="projectTitle" name="title" class="form-input" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="projectDescription">Description</label>
+                    <textarea id="projectDescription" name="description" class="form-textarea"></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="projectGithub">GitHub URL</label>
+                        <input type="url" id="projectGithub" name="github_url" class="form-input">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label" for="projectLive">Live URL</label>
+                        <input type="url" id="projectLive" name="live_url" class="form-input">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="projectStatus">Status</label>
+                        <select id="projectStatus" name="status" class="form-select">
+                            <option value="active">Active</option>
+                            <option value="draft">Draft</option>
+                            <option value="archived">Archived</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label" for="projectTechnologies">Technologies (comma-separated)</label>
+                        <input type="text" id="projectTechnologies" name="technologies" class="form-input" placeholder="JavaScript, React, Node.js">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" id="projectFeatured" name="featured" class="form-checkbox">
+                        Featured Project
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="retro-button">Save Project</button>
+                    <button type="button" class="retro-button" id="cancelProjectBtn">Cancel</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Projects Management -->
+        <div class="projects-management">
+            <h2 class="neon-text">Manage Projects</h2>
+            <div class="projects-grid" id="adminProjectsGrid">
+                <!-- Projects will be loaded here -->
+            </div>
+        </div>
+
+        <!-- GitHub Management -->
+        <div class="github-management">
+            <h2 class="neon-text">GitHub Repositories</h2>
+            <div class="github-grid" id="adminGithubGrid">
+                <!-- GitHub repos will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/script.js?v=1.0.0"></script>
+    <script src="/admin.js?v=1.0.0"></script>
+</body>
+</html>

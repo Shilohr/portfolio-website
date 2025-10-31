@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  portfolio:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key}
+      - DB_HOST=db
+      - DB_USER=${DB_USER:-portfolio}
+      - DB_PASSWORD=${DB_PASSWORD:-securepassword}
+      - DB_NAME=${DB_NAME:-portfolio}
+    volumes:
+      - ./public:/var/www/html:ro
+      - ./database:/docker-entrypoint-initdb.d:ro
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-rootpassword}
+      - MYSQL_DATABASE=${DB_NAME:-portfolio}
+      - MYSQL_USER=${DB_USER:-portfolio}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-securepassword}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+
+volumes:
+  db_data:
