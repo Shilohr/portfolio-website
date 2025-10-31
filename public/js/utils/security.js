@@ -56,7 +56,7 @@ export async function makeAPIRequest(url, options = {}) {
         credentials: 'include'
     };
 
-    // Add CSRF token to state-changing requests
+    // Add CSRF token to state-changing requests if available
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method?.toUpperCase()) && window.csrfToken) {
         defaultOptions.headers['X-CSRF-Token'] = window.csrfToken;
     }
@@ -81,7 +81,7 @@ export async function makeAPIRequest(url, options = {}) {
                 console.warn(' CSRF token expired, refreshing...');
                 await refreshCSRFToken();
                 
-                // Retry the request with new token
+                // Retry request with new token
                 if (window.csrfToken) {
                     mergedOptions.headers['X-CSRF-Token'] = window.csrfToken;
                     return await fetch(url, mergedOptions);
@@ -99,32 +99,55 @@ export async function makeAPIRequest(url, options = {}) {
 
 export async function initializeCSRFProtection() {
     try {
-        const response = await fetch('/api/csrf-token', { credentials: 'include' });
-        if (!response.ok) throw new Error('Failed to fetch CSRF token');
+        console.log('Initializing CSRF protection...');
+        
+        const response = await fetch('/api/csrf-token', { 
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         
         const data = await response.json();
         window.csrfToken = data.csrfToken;
         
-        console.log('CSRF protection initialized');
+        console.log('CSRF protection initialized successfully');
         
         // Refresh CSRF token periodically (every 30 minutes)
         setInterval(refreshCSRFToken, 30 * 60 * 1000);
         
     } catch (error) {
         console.error('Failed to initialize CSRF protection:', error);
-        throw error;
+        // Don't throw error - let the application continue without CSRF
+        console.warn('Continuing without CSRF protection - some features may not work properly');
     }
 }
 
 async function refreshCSRFToken() {
     try {
-        const response = await fetch('/api/csrf-token', { credentials: 'include' });
-        if (!response.ok) throw new Error('Failed to refresh CSRF token');
+        console.log('Refreshing CSRF token...');
+        
+        const response = await fetch('/api/csrf-token', { 
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         
         const data = await response.json();
         window.csrfToken = data.csrfToken;
         
-        console.log('CSRF token refreshed');
+        console.log('CSRF token refreshed successfully');
         
     } catch (error) {
         console.error('Failed to refresh CSRF token:', error);

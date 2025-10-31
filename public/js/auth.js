@@ -6,10 +6,9 @@
 const loginForm = document.getElementById('loginForm');
 const loginMessage = document.getElementById('loginMessage');
 
-// Get CSRF token from meta tag
+// Get CSRF token from window variable (set by security.js)
 function getCsrfToken() {
-    const metaTag = document.querySelector('meta[name="csrf-token"]');
-    return metaTag ? metaTag.getAttribute('content') : '';
+    return window.csrfToken || '';
 }
 
 // Initialize
@@ -26,6 +25,12 @@ document.addEventListener('DOMContentLoaded', function() {
 async function handleLogin(e) {
     e.preventDefault();
     
+    // Check if CSRF token is available
+    if (!window.csrfToken) {
+        showMessage('Security token not ready. Please wait a moment...', 'error');
+        return;
+    }
+    
     const formData = new FormData(loginForm);
     const loginData = {
         username: formData.get('username'),
@@ -40,7 +45,7 @@ async function handleLogin(e) {
             credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': await getCsrfToken()
+                'X-CSRF-Token': window.csrfToken
             },
             body: JSON.stringify(loginData)
         });
@@ -67,34 +72,49 @@ async function handleLogin(e) {
 
 // Check Authentication Status
 function checkAuthStatus() {
+    // Only check if we have a CSRF token available
+    if (!window.csrfToken) {
+        console.log('CSRF token not available, skipping auth check');
+        return;
+    }
+    
     // Verify token is still valid via cookie
     fetch('/api/auth/profile', {
-        credentials: 'include'
-        })
-        .then(response => {
-            if (!response.ok) {
-                // Token invalid
-                logout();
-            }
-        })
-        .catch(error => {
-            console.error('Auth check error:', error);
-        });
+        credentials: 'include',
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            // Token invalid
+            logout();
+        }
+    })
+    .catch(error => {
+        console.error('Auth check error:', error);
+    });
 }
 
 // Logout Function
 async function logout() {
-    // Call logout endpoint
-    fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-            'X-CSRF-Token': await getCsrfToken()
+    try {
+        // Call logout endpoint (CSRF token optional for logout)
+        const response = await fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': window.csrfToken || ''
+            }
+        });
+        
+        if (!response.ok) {
+            console.error('Logout failed:', response.status);
         }
-    })
-.catch(error => {
+    } catch (error) {
         console.error('Logout API error:', error);
-    });
+    }
     
     // Redirect to login
     window.location.href = '/login.html';
