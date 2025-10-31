@@ -18,49 +18,96 @@
     <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
     
     <!-- CSS -->
-    <link rel="stylesheet" href="/style.css?v=1.0.0">
+    <link rel="stylesheet" href="/style.css?v=1.0.1">
+    
+    <!-- CSRF Token -->
+    <meta name="csrf-token" id="csrf-token" content="">
     
     <!-- Preload Critical Resources -->
-    <link rel="preload" href="/assets/images/weic2208a.jpg" as="image">
-    <link rel="preload" href="/assets/images/weic2301a.jpg" as="image">
-    <link rel="preload" href="/assets/images/weic2425a.jpg" as="image">
-    <link rel="preload" href="/assets/images/weic2513a.jpg" as="image">
+    <!-- Background images will be loaded lazily to improve initial page load -->
+    
+    <!-- Structured Data for SEO and Accessibility -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": "Shiloh Robinson",
+        "url": "https://shilohrobinson.dev",
+        "jobTitle": "Software Engineer",
+        "description": "Full-stack developer passionate about cosmic design and innovative solutions",
+        "sameAs": [
+            "https://github.com/Shilohr",
+            "https://linkedin.com/in/shilohrobinson"
+        ],
+        "knowsAbout": ["Software Development", "Web Development", "Full Stack", "JavaScript", "Node.js", "React"],
+        "worksFor": {
+            "@type": "Organization",
+            "name": "Freelance"
+        }
+    }
+    </script>
 </head>
 <body>
+    <!-- Skip Links for Accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <a href="#navigation" class="skip-link">Skip to navigation</a>
+    <!-- Skip Navigation Link for Screen Readers -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
     <!-- Loading Screen -->
-    <div class="page-loader" id="pageLoader">
+    <div class="page-loader" id="pageLoader" role="status" aria-live="polite">
         <div class="loader-content">
             <h1 class="loader-title neon-pink">Initializing Portfolio</h1>
-            <div class="typing-cursor"></div>
+            <div class="typing-cursor" aria-hidden="true"></div>
         </div>
     </div>
 
     <!-- Background System -->
-    <div class="background-container" id="backgroundContainer">
-        <img src="/assets/images/weic2208a.jpg" alt="Space Background 1" class="background-image active">
-        <img src="/assets/images/weic2301a.jpg" alt="Space Background 2" class="background-image">
-        <img src="/assets/images/weic2425a.jpg" alt="Space Background 3" class="background-image">
-        <img src="/assets/images/weic2513a.jpg" alt="Space Background 4" class="background-image">
+    <div class="background-container" id="backgroundContainer" aria-hidden="true">
+        <picture class="background-image active">
+            <source media="(max-width: 480px)" srcset="/assets/images/weic2208a-small.webp">
+            <source media="(max-width: 768px)" srcset="/assets/images/weic2208a-medium.webp">
+            <source media="(max-width: 1200px)" srcset="/assets/images/weic2208a-large.webp">
+            <img src="/assets/images/weic2208a.webp" alt="Decorative space background showing cosmic nebula with vibrant colors" loading="lazy">
+        </picture>
+        <picture class="background-image lazy" data-src="true">
+            <source media="(max-width: 480px)" data-srcset="/assets/images/weic2301a-small.webp">
+            <source media="(max-width: 768px)" data-srcset="/assets/images/weic2301a-medium.webp">
+            <source media="(max-width: 1200px)" data-srcset="/assets/images/weic2301a-large.webp">
+            <img data-src="/assets/images/weic2301a.webp" alt="Decorative space background showing distant galaxies and star formations" loading="lazy">
+        </picture>
+        <picture class="background-image lazy" data-src="true" role="img" aria-label="Decorative space background showing colorful cosmic dust clouds">
+            <source media="(max-width: 480px)" data-srcset="/assets/images/weic2425a-small.webp">
+            <source media="(max-width: 768px)" data-srcset="/assets/images/weic2425a-medium.webp">
+            <source media="(max-width: 1200px)" data-srcset="/assets/images/weic2425a-large.webp">
+            <img data-src="/assets/images/weic2425a.webp" alt="" role="presentation" loading="lazy">
+        </picture>
+        <picture class="background-image lazy" data-src="true" role="img" aria-label="Decorative space background showing stellar nursery with newborn stars">
+            <source media="(max-width: 480px)" data-srcset="/assets/images/weic2513a-small.webp">
+            <source media="(max-width: 768px)" data-srcset="/assets/images/weic2513a-medium.webp">
+            <source media="(max-width: 1200px)" data-srcset="/assets/images/weic2513a-large.webp">
+            <img data-src="/assets/images/weic2513a.webp" alt="" role="presentation" loading="lazy">
+        </picture>
     </div>
 
     <!-- Starfield Effect -->
-    <div class="starfield" id="starfield"></div>
+    <div class="starfield" id="starfield" aria-hidden="true"></div>
 
     <!-- CRT Effect -->
-    <div class="crt-effect"></div>
+    <div class="crt-effect" aria-hidden="true"></div>
 
     <!-- Navigation -->
-    <nav class="navigation" id="navigation">
+    <nav class="navigation" id="navigation" role="navigation" aria-label="Main navigation">
         <div class="nav-container">
-            <a href="#home" class="nav-logo neon-text">SR</a>
-            <ul class="nav-menu" id="navMenu">
-                <li><a href="#home" class="nav-link active">Home</a></li>
-                <li><a href="#projects" class="nav-link">Projects</a></li>
-                <li><a href="#github" class="nav-link">GitHub</a></li>
-                <li><a href="#contact" class="nav-link">Contact</a></li>
-                <li><a href="/login.html" class="nav-link">Admin</a></li>
+            <a href="#home" class="nav-logo neon-text" aria-label="Shiloh Robinson - Home">SR</a>
+            <ul class="nav-menu" id="navMenu" role="menubar">
+                <li role="none"><a href="#home" class="nav-link active" role="menuitem">Home</a></li>
+                <li role="none"><a href="#projects" class="nav-link" role="menuitem">Projects</a></li>
+                <li role="none"><a href="#github" class="nav-link" role="menuitem">GitHub</a></li>
+                <li role="none"><a href="#contact" class="nav-link" role="menuitem">Contact</a></li>
+                <li role="none"><a href="/login.html" class="nav-link" role="menuitem">Admin</a></li>
             </ul>
-            <button class="mobile-menu-toggle" id="mobileMenuToggle">
+            <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle mobile menu" aria-expanded="false" aria-controls="navMenu">
                 <span></span>
                 <span></span>
                 <span></span>
@@ -69,80 +116,83 @@
     </nav>
 
     <!-- Hero Section -->
-    <section class="hero" id="home">
+    <section class="hero" id="home" aria-labelledby="hero-title">
         <div class="hero-content">
-            <h1 class="hero-title neon-text">Shiloh Robinson</h1>
-            <div class="hero-subtitle">
-                <span id="typingText"></span>
-                <span class="typing-cursor"></span>
+            <h1 class="hero-title neon-text" id="hero-title">Shiloh Robinson</h1>
+            <div class="hero-subtitle" aria-live="polite" aria-atomic="true">
+                <span id="typingText" aria-label="Current role"></span>
+                <span class="typing-cursor" aria-hidden="true"></span>
             </div>
             <p class="hero-description">
                 Crafting digital experiences with modern retro aesthetics. 
                 Full-stack developer passionate about cosmic design and innovative solutions.
             </p>
             <div class="hero-buttons">
-                <a href="#projects" class="retro-button">View Projects</a>
-                <a href="#contact" class="retro-button">Get In Touch</a>
+                <a href="#projects" class="retro-button" aria-label="View featured projects">View Projects</a>
+                <a href="#contact" class="retro-button" aria-label="Contact Shiloh Robinson">Get In Touch</a>
             </div>
         </div>
     </section>
 
     <!-- Projects Section -->
-    <section class="section" id="projects">
-        <h2 class="section-title neon-text">Featured Projects</h2>
-        <div class="projects-grid" id="projectsGrid">
+    <main id="main-content">
+    <section class="section" id="projects" aria-labelledby="projects-title">
+        <h2 class="section-title neon-text" id="projects-title">Featured Projects</h2>
+        <div class="projects-grid" id="projectsGrid" role="region" aria-label="Featured projects">
             <!-- Projects will be loaded here via JavaScript -->
         </div>
         <div class="text-center mt-3">
-            <a href="/projects.html" class="retro-button">View All Projects</a>
+            <a href="/projects.html" class="retro-button" aria-label="View all projects in portfolio">View All Projects</a>
         </div>
     </section>
 
     <!-- GitHub Section -->
-    <section class="section" id="github">
-        <h2 class="section-title neon-text">GitHub Activity</h2>
-        <div class="github-container" id="githubContainer">
+    <section class="section" id="github" aria-labelledby="github-title">
+        <h2 class="section-title neon-text" id="github-title">GitHub Activity</h2>
+        <div class="github-container" id="githubContainer" role="region" aria-label="GitHub repositories">
             <!-- GitHub repositories will be loaded here -->
         </div>
         <div class="text-center mt-3">
-            <button class="retro-button" id="syncGithub">Sync GitHub</button>
-            <a href="https://github.com/Shilohr" target="_blank" class="retro-button">View on GitHub</a>
+            <button class="retro-button" id="syncGithub" aria-label="Sync GitHub repositories">Sync GitHub</button>
+            <a href="https://github.com/Shilohr" target="_blank" class="retro-button" rel="noopener noreferrer" aria-label="View Shiloh Robinson's GitHub profile">View on GitHub</a>
         </div>
     </section>
 
     <!-- Contact Section -->
-    <section class="section contact" id="contact">
-        <h2 class="section-title neon-text">Get In Touch</h2>
-        <div class="contact-info">
-            <div class="contact-item">
-                <div class="contact-icon">📧</div>
+    <section class="section contact" id="contact" aria-labelledby="contact-title">
+        <h2 class="section-title neon-text" id="contact-title">Get In Touch</h2>
+        <div class="contact-info" role="list">
+            <div class="contact-item" role="listitem">
+                <div class="contact-icon" aria-hidden="true"></div>
                 <div class="contact-label">Email</div>
                 <div class="contact-value" id="emailValue">contact@shilohrobinson.dev</div>
-                <button class="copy-button" data-copy="emailValue">Copy Email</button>
+                <button class="copy-button" data-copy="emailValue" aria-label="Copy email address to clipboard">Copy Email</button>
             </div>
-            <div class="contact-item">
-                <div class="contact-icon">💼</div>
+            <div class="contact-item" role="listitem">
+                <div class="contact-icon" aria-hidden="true"></div>
                 <div class="contact-label">LinkedIn</div>
                 <div class="contact-value" id="linkedinValue">linkedin.com/in/shilohrobinson</div>
-                <button class="copy-button" data-copy="linkedinValue">Copy URL</button>
+                <button class="copy-button" data-copy="linkedinValue" aria-label="Copy LinkedIn URL to clipboard">Copy URL</button>
             </div>
-            <div class="contact-item">
-                <div class="contact-icon">🐙</div>
+            <div class="contact-item" role="listitem">
+                <div class="contact-icon" aria-hidden="true"></div>
                 <div class="contact-label">GitHub</div>
                 <div class="contact-value" id="githubValue">github.com/Shilohr</div>
-                <button class="copy-button" data-copy="githubValue">Copy URL</button>
+                <button class="copy-button" data-copy="githubValue" aria-label="Copy GitHub URL to clipboard">Copy URL</button>
             </div>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="section">
+    <footer class="section" role="contentinfo">
         <div class="text-center">
             <p>&copy; 2024 Shiloh Robinson. Designed with cosmic energy.</p>
         </div>
     </footer>
+    </main>
 
     <!-- JavaScript -->
-    <script src="/js/script.js?v=1.0.0"></script>
+<script type="module" src="/js/bundle-analyzer.js?v=1.1.2"></script>
+<script type="module" src="/js/main.js?v=1.1.2"></script>
 </body>
 </html>

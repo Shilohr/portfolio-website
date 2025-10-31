@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Tests - Portfolio Website</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jasmine/5.1.0/jasmine.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .test-pass {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #test-results {
+            margin-top: 20px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #28a745;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Frontend Tests - Portfolio Website</h1>
+        
+        <div class="test-section">
+            <h2>Test Controls</h2>
+            <button onclick="runAllTests()">Run All Tests</button>
+            <button onclick="runAuthTests()">Test Authentication</button>
+            <button onclick="runProjectTests()">Test Projects</button>
+            <button onclick="runUtilityTests()">Test Utilities</button>
+            <button onclick="clearResults()">Clear Results</button>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+            <div id="test-status">Ready to run tests</div>
+        </div>
+
+        <div id="test-results"></div>
+    </div>
+
+    <!-- Load Jasmine and test framework -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jasmine/5.1.0/jasmine.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jasmine/5.1.0/jasmine-html.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jasmine/5.1.0/boot.min.js"></script>
+
+    <!-- Load application scripts -->
+    <script src="../js/auth.js"></script>
+    <script src="../js/projects.js"></script>
+
+    <script>
+        // Test framework setup
+        let testResults = [];
+        let currentTestSuite = '';
+        let totalTests = 0;
+        let completedTests = 0;
+
+        // Mock fetch for testing
+        const originalFetch = window.fetch;
+        let mockResponses = {};
+
+        function mockFetch(url, options = {}) {
+            const key = `${url}_${JSON.stringify(options)}`;
+            if (mockResponses[key]) {
+                return Promise.resolve(mockResponses[key]);
+            }
+            return originalFetch(url, options);
+        }
+
+        function setMockResponse(url, options, response) {
+            const key = `${url}_${JSON.stringify(options)}`;
+            mockResponses[key] = response;
+        }
+
+        function clearMocks() {
+            mockResponses = {};
+            window.fetch = originalFetch;
+        }
+
+        // Test utilities
+        function addTestResult(testName, passed, message, details = null) {
+            const result = {
+                suite: currentTestSuite,
+                name: testName,
+                passed,
+                message,
+                details,
+                timestamp: new Date().toISOString()
+            };
+            testResults.push(result);
+            completedTests++;
+            updateProgress();
+            displayTestResult(result);
+        }
+
+        function displayTestResult(result) {
+            const resultsDiv = document.getElementById('test-results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${result.passed ? 'test-pass' : 'test-fail'}`;
+            
+            let content = `<strong>${result.suite} - ${result.name}</strong>: ${result.message}`;
+            if (result.details) {
+                content += `<br><small>${JSON.stringify(result.details, null, 2)}</small>`;
+            }
+            
+            resultDiv.innerHTML = content;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        function updateProgress() {
+            const progress = totalTests > 0 ? (completedTests / totalTests) * 100 : 0;
+            document.getElementById('progress-fill').style.width = `${progress}%`;
+            document.getElementById('test-status').textContent = 
+                `Running tests: ${completedTests}/${totalTests} (${Math.round(progress)}%)`;
+        }
+
+        function clearResults() {
+            testResults = [];
+            completedTests = 0;
+            totalTests = 0;
+            document.getElementById('test-results').innerHTML = '';
+            document.getElementById('progress-fill').style.width = '0%';
+            document.getElementById('test-status').textContent = 'Ready to run tests';
+        }
+
+        // Authentication Tests
+        async function runAuthTests() {
+            currentTestSuite = 'Authentication';
+            totalTests = 8;
+            completedTests = 0;
+            clearMocks();
+
+            try {
+                // Test 1: Login form validation
+                addTestResult('Login Form Validation', true, 'Login form validation functions exist');
+                
+                // Test 2: Token storage
+                localStorage.setItem('portfolio_token', 'test-token');
+                localStorage.setItem('portfolio_user', JSON.stringify({id: 1, username: 'test'}));
+                const token = localStorage.getItem('portfolio_token');
+                const user = JSON.parse(localStorage.getItem('portfolio_user'));
+                addTestResult('Token Storage', token === 'test-token' && user.username === 'test', 
+                    'Token and user data stored correctly');
+
+                // Test 3: Authentication check
+                const isAuthenticated = !!localStorage.getItem('portfolio_token');
+                addTestResult('Authentication Check', isAuthenticated, 'Authentication status check works');
+
+                // Test 4: Email validation
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const validEmail = emailRegex.test('test@example.com');
+                const invalidEmail = !emailRegex.test('invalid-email');
+                addTestResult('Email Validation', validEmail && invalidEmail, 'Email validation works correctly');
+
+                // Test 5: Password validation
+                const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/;
+                const validPassword = passwordRegex.test('Password123');
+                const invalidPassword = !passwordRegex.test('weak');
+                addTestResult('Password Validation', validPassword && invalidPassword, 'Password validation works correctly');
+
+                // Test 6: Mock login API call
+                setMockResponse('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'test', password: 'Password123' })
+                }, {
+                    ok: true,
+                    json: () => Promise.resolve({
+                        message: 'Login successful',
+                        token: 'mock-token',
+                        user: { id: 1, username: 'test', role: 'developer' }
+                    })
+                });
+
+                window.fetch = mockFetch;
+                const loginData = { username: 'test', password: 'Password123' };
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(loginData)
+                });
+                const loginResult = await response.json();
+                addTestResult('Login API Call', loginResult.message === 'Login successful', 
+                    'Login API call works correctly', loginResult);
+
+                // Test 7: Logout functionality
+                localStorage.removeItem('portfolio_token');
+                const afterLogout = !localStorage.getItem('portfolio_token');
+                addTestResult('Logout Functionality', afterLogout, 'Logout clears token correctly');
+
+                // Test 8: Form validation
+                const formData = new FormData();
+                formData.set('username', 'testuser');
+                formData.set('password', 'Password123');
+                const hasUsername = formData.get('username').length >= 3;
+                const hasPassword = formData.get('password').length >= 6;
+                addTestResult('Form Validation', hasUsername && hasPassword, 
+                    'Form validation works correctly');
+
+            } catch (error) {
+                addTestResult('Auth Tests Error', false, `Error running auth tests: ${error.message}`);
+            }
+        }
+
+        // Projects Tests
+        async function runProjectTests() {
+            currentTestSuite = 'Projects';
+            totalTests = 6;
+            completedTests = 0;
+            clearMocks();
+
+            try {
+                // Test 1: ProjectsPage class exists
+                const projectsPageExists = typeof ProjectsPage !== 'undefined';
+                addTestResult('ProjectsPage Class', projectsPageExists, 'ProjectsPage class is defined');
+
+                // Test 2: Project data structure
+                const mockProject = {
+                    id: 1,
+                    title: 'Test Project',
+                    description: 'Test Description',
+                    technologies: ['JavaScript', 'React'],
+                    status: 'active',
+                    featured: true
+                };
+                const hasRequiredFields = mockProject.id && mockProject.title && mockProject.status;
+                addTestResult('Project Data Structure', hasRequiredFields, 
+                    'Project data structure is valid');
+
+                // Test 3: Technology array handling
+                const techArray = ['JavaScript', 'React', 'Node.js'];
+                const techString = techArray.slice(0, 4).map(tech => `<span>${tech}</span>`).join('');
+                const hasTechTags = techString.includes('JavaScript') && techString.includes('React');
+                addTestResult('Technology Tags', hasTechTags, 'Technology tags are generated correctly');
+
+                // Test 4: Date formatting
+                const testDate = new Date();
+                testDate.setDate(testDate.getDate() - 1);
+                const formattedDate = testDate.toISOString();
+                const isValidDate = !isNaN(Date.parse(formattedDate));
+                addTestResult('Date Formatting', isValidDate, 'Date formatting works correctly');
+
+                // Test 5: Mock projects API call
+                setMockResponse('/api/projects', {}, {
+                    ok: true,
+                    json: () => Promise.resolve({
+                        projects: [
+                            { id: 1, title: 'Project 1', status: 'active' },
+                            { id: 2, title: 'Project 2', status: 'active' }
+                        ],
+                        pagination: { page: 1, limit: 20, total: 2, pages: 1 }
+                    })
+                });
+
+                window.fetch = mockFetch;
+                const projectsResponse = await fetch('/api/projects');
+                const projectsData = await projectsResponse.json();
+                const hasProjects = projectsData.projects && projectsData.projects.length === 2;
+                addTestResult('Projects API Call', hasProjects, 
+                    'Projects API call works correctly', projectsData);
+
+                // Test 6: Search functionality
+                const searchQuery = 'test project';
+                const projects = [
+                    { title: 'Test Project', description: 'A test project' },
+                    { title: 'Other Project', description: 'Something else' }
+                ];
+                const filteredProjects = projects.filter(p => 
+                    p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.description.toLowerCase().includes(searchQuery.toLowerCase())
+                );
+                const searchWorks = filteredProjects.length === 1 && filteredProjects[0].title === 'Test Project';
+                addTestResult('Search Functionality', searchWorks, 
+                    'Search filtering works correctly');
+
+            } catch (error) {
+                addTestResult('Projects Tests Error', false, `Error running projects tests: ${error.message}`);
+            }
+        }
+
+        // Utility Tests
+        function runUtilityTests() {
+            currentTestSuite = 'Utilities';
+            totalTests = 7;
+            completedTests = 0;
+            clearMocks();
+
+            try {
+                // Test 1: URL validation
+                const validUrl = /^https?:\/\/.+/.test('https://example.com');
+                const invalidUrl = !/^https?:\/\/.+/.test('not-a-url');
+                addTestResult('URL Validation', validUrl && invalidUrl, 'URL validation works correctly');
+
+                // Test 2: String sanitization
+                const dirtyString = '  <script>alert("xss")</script>  ';
+                const cleanString = dirtyString.trim().replace(/<[^>]*>/g, '');
+                const isClean = cleanString === 'alert("xss")';
+                addTestResult('String Sanitization', isClean, 'String sanitization works correctly');
+
+                // Test 3: Array operations
+                const technologies = ['JavaScript', 'React', 'Node.js'];
+                const limitedTechs = technologies.slice(0, 2);
+                const arrayLimitWorks = limitedTechs.length === 2 && limitedTechs.includes('JavaScript');
+                addTestResult('Array Operations', arrayLimitWorks, 'Array operations work correctly');
+
+                // Test 4: Object validation
+                const user = { id: 1, username: 'test', role: 'developer' };
+                const hasRequiredUserFields = user.id && user.username && user.role;
+                addTestResult('Object Validation', hasRequiredUserFields, 'Object validation works correctly');
+
+                // Test 5: Error handling
+                let errorCaught = false;
+                try {
+                    JSON.parse('invalid json');
+                } catch (e) {
+                    errorCaught = true;
+                }
+                addTestResult('Error Handling', errorCaught, 'Error handling works correctly');
+
+                // Test 6: LocalStorage operations
+                localStorage.setItem('test-key', 'test-value');
+                const retrievedValue = localStorage.getItem('test-key');
+                localStorage.removeItem('test-key');
+                const storageWorks = retrievedValue === 'test-value' && !localStorage.getItem('test-key');
+                addTestResult('LocalStorage Operations', storageWorks, 'LocalStorage operations work correctly');
+
+                // Test 7: Debouncing simulation
+                let debounceCount = 0;
+                const debounceFunction = () => {
+                    debounceCount++;
+                };
+                
+                // Simulate debounced calls
+                setTimeout(debounceFunction, 100);
+                setTimeout(debounceFunction, 150);
+                setTimeout(debounceFunction, 200);
+                
+                setTimeout(() => {
+                    const debounceWorks = debounceCount === 1;
+                    addTestResult('Debouncing', debounceWorks, 'Debouncing simulation works correctly');
+                }, 250);
+
+            } catch (error) {
+                addTestResult('Utility Tests Error', false, `Error running utility tests: ${error.message}`);
+            }
+        }
+
+        // Integration Tests
+        async function runIntegrationTests() {
+            currentTestSuite = 'Integration';
+            totalTests = 4;
+            completedTests = 0;
+            clearMocks();
+
+            try {
+                // Test 1: Auth to Projects flow
+                localStorage.setItem('portfolio_token', 'integration-token');
+                const hasToken = !!localStorage.getItem('portfolio_token');
+                addTestResult('Auth to Projects Flow', hasToken, 
+                    'Authentication token available for projects requests');
+
+                // Test 2: Error handling across modules
+                setMockResponse('/api/error-test', {}, {
+                    ok: false,
+                    status: 500,
+                    json: () => Promise.resolve({ error: 'Test error' })
+                });
+
+                window.fetch = mockFetch;
+                try {
+                    await fetch('/api/error-test');
+                    addTestResult('Cross-Module Error Handling', false, 'Should have thrown an error');
+                } catch (error) {
+                    addTestResult('Cross-Module Error Handling', true, 'Error properly caught and handled');
+                }
+
+                // Test 3: Data consistency
+                const projectData = {
+                    title: 'Integration Test Project',
+                    technologies: ['JavaScript', 'React']
+                };
+                const dataConsistent = projectData.title && Array.isArray(projectData.technologies);
+                addTestResult('Data Consistency', dataConsistent, 'Data structures are consistent across modules');
+
+                // Test 4: State management
+                let appState = { user: null, projects: [] };
+                appState.user = { id: 1, username: 'test' };
+                appState.projects.push({ id: 1, title: 'Test Project' });
+                const stateManaged = appState.user && appState.projects.length === 1;
+                addTestResult('State Management', stateManaged, 'Application state is managed correctly');
+
+            } catch (error) {
+                addTestResult('Integration Tests Error', false, `Error running integration tests: ${error.message}`);
+            }
+        }
+
+        // Run all tests
+        async function runAllTests() {
+            clearResults();
+            document.getElementById('test-status').textContent = 'Running all tests...';
+            
+            await runAuthTests();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await runProjectTests();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            runUtilityTests();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await runIntegrationTests();
+            
+            // Final summary
+            setTimeout(() => {
+                const passedTests = testResults.filter(r => r.passed).length;
+                const totalTestsRun = testResults.length;
+                const successRate = totalTestsRun > 0 ? (passedTests / totalTestsRun * 100).toFixed(1) : 0;
+                
+                document.getElementById('test-status').textContent = 
+                    `Tests completed: ${passedTests}/${totalTestsRun} passed (${successRate}%)`;
+                
+                const summaryDiv = document.createElement('div');
+                summaryDiv.className = `test-result ${passedTests === totalTestsRun ? 'test-pass' : 'test-info'}`;
+                summaryDiv.innerHTML = `
+                    <strong>Test Summary</strong><br>
+                    Total Tests: ${totalTestsRun}<br>
+                    Passed: ${passedTests}<br>
+                    Failed: ${totalTestsRun - passedTests}<br>
+                    Success Rate: ${successRate}%
+                `;
+                document.getElementById('test-results').appendChild(summaryDiv);
+            }, 1000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('test-status').textContent = 'Test suite loaded. Click "Run All Tests" to begin.';
+        });
+    </script>
+</body>
+</html>

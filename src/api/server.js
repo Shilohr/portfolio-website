@@ -1,23 +1,72 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
+const path = require('path');
+const { createPool } = require('./utils/json-adapter');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
+const csrf = require('csurf');
 const dotenv = require('dotenv');
+const { logger, requestLogger } = require('./utils/logger');
+const { validateConfig } = require('./utils/config');
+const { csrfProtection, csrfTokenMiddleware, getCsrfToken, csrfErrorHandler } = require('./utils/csrf');
+const { errorHandler, sendSuccess, sendError } = require('./utils/errorHandler');
+const { commonValidations, handleValidationErrors } = require('./utils/validation');
+const DatabaseMaintenance = require('./utils/dbMaintenance');
+const { cache } = require('./utils/cache');
+const { performanceMonitor, requestMonitor, monitorQuery } = require('./utils/performanceMonitor');
 const authRoutes = require('./auth');
 const projectsRoutes = require('./projects');
 const githubRoutes = require('./github');
 
 dotenv.config();
 
+// Validate environment configuration on startup
+let config;
+try {
+    const validation = validateConfig();
+    config = validation.envVars;
+    
+    logger.info('Environment configuration validated successfully', null, {
+        environment: config.NODE_ENV,
+        port: config.PORT,
+        securityEnabled: config.NODE_ENV === 'production'
+    });
+    
+    // Log configuration summary (without exposing secrets)
+    logger.info('Configuration validated', null, validation.configStatus);
+    
+} catch (error) {
+    // Use console.error here since logger might not be properly initialized during config validation failure
+    console.error('❌ Environment validation failed:');
+    console.error(error.message);
+    console.error('\n🔧 To fix this issue:');
+    console.error('1. Copy .env.example to .env');
+    console.error('2. Fill in the required environment variables');
+    console.error('3. For production, run: node scripts/setup.js');
+    console.error('4. Ensure all secrets are cryptographically secure');
+    process.exit(1);
+}
+
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = config.PORT;
 
 // Trust proxy for nginx (specific IP ranges for security)
 app.set('trust proxy', ['127.0.0.1', '::1']);
 
+// HTTPS enforcement in production
+if (config.NODE_ENV === 'production') {
+    app.use((req, res, next) => {
+        if (req.header('x-forwarded-proto') !== 'https') {
+            res.redirect(`https://${req.header('host')}${req.url}`);
+        } else {
+            next();
+        }
+    });
+}
+
 // Security middleware
-app.use(helmet({
+const helmetConfig = {
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
@@ -26,46 +75,222 @@ app.use(helmet({
             imgSrc: ["'self'", "data:", "https:"],
         },
     },
-}));
+    hsts: config.NODE_ENV === 'production' ? {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+    } : false
+};
+
+if (config.NODE_ENV === 'production') {
+    helmetConfig.crossOriginEmbedderPolicy = true;
+    helmetConfig.crossOriginResourcePolicy = { policy: "cross-origin" };
+}
+
+app.use(helmet(helmetConfig));
 
 // CORS configuration
-app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-        ? ['https://shilohrobinson.dev', 'http://localhost:8080']
-        : ['http://localhost:8080'],
-    credentials: true
-}));
+const corsOptions = {
+    credentials: true,
+    optionsSuccessStatus: 200
+};
+
+if (config.NODE_ENV === 'production') {
+    corsOptions.origin = [config.CORS_ORIGIN || 'https://shilohrobinson.dev'];
+    corsOptions.methods = ['GET', 'POST', 'PUT', 'DELETE'];
+    corsOptions.allowedHeaders = ['Content-Type', 'Authorization'];
+    corsOptions.maxAge = 86400; // 24 hours
+} else {
+    corsOptions.origin = ['http://localhost:8080', 'http://localhost:3000'];
+}
+
+app.use(cors(corsOptions));
 
 // Rate limiting
-const limiter = rateLimit({
+const rateLimitConfig = {
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.'
-});
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+};
+
+if (config.NODE_ENV === 'production') {
+    rateLimitConfig.max = config.RATE_LIMIT_MAX_REQUESTS; // Use config value
+    rateLimitConfig.skip = (req) => {
+        // Skip rate limiting for health checks
+        return req.path === '/api/health';
+    };
+} else {
+    rateLimitConfig.max = config.RATE_LIMIT_MAX_REQUESTS; // Use config value
+}
+
+const limiter = rateLimit(rateLimitConfig);
 app.use('/api/', limiter);
+
+// Additional stricter rate limiting for auth endpoints
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: config.AUTH_RATE_LIMIT_MAX,
+    message: 'Too many authentication attempts, please try again later.',
+    skipSuccessfulRequests: true
+});
+
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+
+// Request logging middleware
+app.use(requestLogger);
+
+// Performance monitoring middleware
+app.use(requestMonitor);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'portfolio',
-    password: process.env.DB_PASSWORD || 'securepassword',
-    database: process.env.DB_NAME || 'portfolio',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    charset: 'utf8mb4',
-    namedPlaceholders: false,
-    dateStrings: false
+// Cookie parser for CSRF tokens
+app.use(cookieParser());
+
+
+
+// Apply CSRF protection to all state-changing routes
+app.use('/api/auth/login', csrfProtection);
+app.use('/api/auth/register', csrfProtection);
+app.use('/api/projects', csrfTokenMiddleware);
+app.use('/api/github', csrfTokenMiddleware);
+app.use('/api/auth/logout', csrfProtection);
+
+// SQLite database connection
+const pool = createPool({
+    database: config.DB_NAME || 'portfolio'
 });
 
-// Make database available to routes
-app.use((req, res, next) => {
-    req.db = pool;
-    next();
+// Database connection pool monitoring
+pool.on('connection', (connection) => {
+    logger.info('New database connection established', null, {
+        connectionId: connection.threadId,
+        timestamp: new Date().toISOString()
+    });
+});
+
+pool.on('acquire', (connection) => {
+    logger.debug('Connection acquired from pool', null, {
+        connectionId: connection.threadId,
+        activeConnections: pool._allConnections.length,
+        freeConnections: pool._freeConnections.length
+    });
+});
+
+pool.on('release', (connection) => {
+    logger.debug('Connection released to pool', null, {
+        connectionId: connection.threadId,
+        activeConnections: pool._allConnections.length,
+        freeConnections: pool._freeConnections.length
+    });
+});
+
+pool.on('enqueue', () => {
+    logger.warn('Connection request queued - pool exhausted', null, {
+        queueLength: pool._connectionQueue.length,
+        activeConnections: pool._allConnections.length,
+        freeConnections: pool._freeConnections.length
+    });
+});
+
+// Initialize database maintenance
+const dbMaintenance = new DatabaseMaintenance(pool);
+
+// Periodic pool health monitoring
+setInterval(() => {
+    const poolStats = {
+        totalConnections: pool._allConnections.length,
+        freeConnections: pool._freeConnections.length,
+        queuedRequests: pool._connectionQueue.length,
+        connectionLimit: pool.config.connectionLimit,
+        timestamp: new Date().toISOString()
+    };
+    
+    logger.info('Database pool health check', null, poolStats);
+    
+    // Alert if pool is under stress
+    if (poolStats.queuedRequests > 0) {
+        logger.warn('Database pool under stress', null, {
+            ...poolStats,
+            alert: 'High queue length detected'
+        });
+    }
+}, 300000); // Check every 5 minutes
+
+// Scheduled database maintenance tasks
+if (config.NODE_ENV === 'production') {
+    // Daily cleanup of expired sessions (runs at 2 AM)
+    setInterval(async () => {
+        const now = new Date();
+        if (now.getHours() === 2 && now.getMinutes() === 0) {
+            try {
+                await dbMaintenance.cleanupExpiredSessions();
+                logger.info('Daily session cleanup completed', null, { 
+                    timestamp: now.toISOString() 
+                });
+            } catch (error) {
+                logger.error('Daily session cleanup failed', null, { 
+                    error: error.message 
+                });
+            }
+        }
+    }, 60000); // Check every minute
+
+    // Weekly table optimization (runs on Sunday at 3 AM)
+    setInterval(async () => {
+        const now = new Date();
+        if (now.getDay() === 0 && now.getHours() === 3 && now.getMinutes() === 0) {
+            try {
+                await dbMaintenance.optimizeTables();
+                logger.info('Weekly table optimization completed', null, { 
+                    timestamp: now.toISOString() 
+                });
+            } catch (error) {
+                logger.error('Weekly table optimization failed', null, { 
+                    error: error.message 
+                });
+            }
+        }
+    }, 60000); // Check every minute
+
+    // Monthly partition management (runs on 1st of month at 4 AM)
+    setInterval(async () => {
+        const now = new Date();
+        if (now.getDate() === 1 && now.getHours() === 4 && now.getMinutes() === 0) {
+            try {
+                const currentYear = now.getFullYear();
+                await dbMaintenance.createAuditLogPartition(currentYear + 1);
+                await dbMaintenance.dropOldPartitions();
+                logger.info('Monthly partition management completed', null, { 
+                    timestamp: now.toISOString(),
+                    year: currentYear
+                });
+            } catch (error) {
+                logger.error('Monthly partition management failed', null, { 
+                    error: error.message 
+                });
+            }
+        }
+    }, 60000); // Check every minute
+}
+
+// Make database available to routes with performance monitoring
+// Static file serving
+app.use(express.static('/var/www/html'));
+
+app.use(async (req, res, next) => {
+    try {
+        const connection = await pool.getConnection();
+        req.db = connection; // Temporarily bypass monitorQuery
+        next();
+    } catch (error) {
+        logger.error('Database connection failed', error);
+        sendError(res, 'DATABASE_ERROR', 'Database connection failed');
+    }
 });
 
 // Routes
@@ -73,36 +298,288 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/github', githubRoutes);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
+// CSRF token endpoint
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+    // Set additional security headers for the token endpoint
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+    });
+    
     res.json({ 
-        status: 'ok', 
-        timestamp: new Date().toISOString(),
-        version: '1.0.0'
+        csrfToken: req.csrfToken(),
+        timestamp: Date.now()
     });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ 
-        error: 'Something went wrong!',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+/**
+ * Health check endpoint with comprehensive database monitoring
+ * Tests database connectivity and provides connection pool statistics
+ * Used by load balancers and monitoring systems to verify service health
+ */
+app.get('/api/health', async (req, res) => {
+    try {
+        // Test database connection with simple query
+        const dbTest = await pool.query('SELECT 1 as test');
+        
+        // Get comprehensive pool statistics for monitoring
+        // Handle both MySQL pools and JSON adapter pools
+        let poolStats;
+        if (pool._allConnections) {
+            // MySQL-style pool
+            poolStats = {
+                totalConnections: pool._allConnections.length,
+                freeConnections: pool._freeConnections.length,
+                queuedRequests: pool._connectionQueue.length,
+                connectionLimit: pool.config.connectionLimit
+            };
+        } else {
+            // JSON adapter pool
+            poolStats = {
+                type: 'JSON Adapter',
+                connected: pool.connected,
+                databasePath: pool.adapter ? pool.adapter.dbPath : 'unknown'
+            };
+        }
+        
+        // Handle different result formats from different adapters
+        let testResult;
+        if (Array.isArray(dbTest) && dbTest.length > 0 && Array.isArray(dbTest[0]) && dbTest[0].length > 0) {
+            // MySQL-style result: [[{test: 1}]]
+            testResult = dbTest[0][0].test === 1;
+        } else if (Array.isArray(dbTest) && dbTest.length > 0 && dbTest[0].test === 1) {
+            // JSON adapter result: [{test: 1}]
+            testResult = dbTest[0].test === 1;
+        } else {
+            testResult = false;
+        }
+        
+        res.json({ 
+            status: 'healthy', 
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            environment: config.NODE_ENV,
+            database: {
+                status: 'connected',
+                testResult: testResult,
+                pool: poolStats
+            }
+        });
+    } catch (error) {
+        logger.error('Health check failed', req, { error: error.message });
+        res.status(503).json({ 
+            status: 'unhealthy', 
+            timestamp: new Date().toISOString(),
+            error: 'Database connection failed'
+        });
+    }
 });
+
+/**
+ * Cache management endpoint for administrative operations
+ * Supports clearing, invalidating, and getting cache statistics
+ * Requires admin privileges and proper validation
+ */
+app.post('/api/admin/cache', [
+    commonValidations.maintenanceOperation,
+    handleValidationErrors
+], async (req, res) => {
+    try {
+        const { operation, category, pattern } = req.body;
+        
+        let result;
+        switch (operation) {
+            case 'clear':
+                if (category) {
+                    cache.clear(category);
+                    result = { cleared: category };
+                } else {
+                    cache.clear();
+                    result = { cleared: 'all' };
+                }
+                break;
+            case 'invalidate':
+                if (pattern) {
+                    const deletedCount = cache.invalidatePattern(pattern);
+                    result = { invalidated: pattern, deletedCount };
+                } else {
+                    return sendError(res, 'VALIDATION_ERROR', 'Pattern is required for invalidate operation');
+                }
+                break;
+            case 'stats':
+                result = cache.getStats();
+                break;
+            default:
+                return sendError(res, 'VALIDATION_ERROR', 'Invalid cache operation');
+        }
+        
+        logger.info('Cache management operation completed', req, { 
+            operation, 
+            result 
+        });
+        
+        res.json({ success: true, operation, result });
+        
+    } catch (error) {
+        logger.error('Cache management operation failed', req, { 
+            operation: req.body.operation, 
+            error: error.message 
+        });
+        sendError(res, 'INTERNAL_ERROR', 'Cache management operation failed');
+    }
+});
+
+/**
+ * Performance monitoring endpoint for administrative metrics
+ * Provides comprehensive performance statistics and monitoring data
+ * Requires admin privileges for access
+ */
+app.get('/api/admin/performance', async (req, res) => {
+    try {
+        const summary = performanceMonitor.getSummary();
+        
+        res.json({ 
+            success: true, 
+            performance: summary 
+        });
+        
+    } catch (error) {
+        logger.error('Performance monitoring failed', req, { 
+            error: error.message 
+        });
+        sendError(res, 'INTERNAL_ERROR', 'Performance monitoring failed');
+    }
+});
+
+/**
+ * Database maintenance endpoint for administrative operations
+ * Supports session cleanup, table optimization, and partition management
+ * Requires admin privileges and comprehensive validation
+ */
+app.post('/api/admin/maintenance', [
+    commonValidations.maintenanceOperation,
+    commonValidations.year,
+    commonValidations.yearsToKeep,
+    handleValidationErrors
+], async (req, res) => {
+    try {
+        const { operation, year, yearsToKeep } = req.body;
+        
+        let result;
+        switch (operation) {
+            case 'cleanup-sessions':
+                result = await dbMaintenance.cleanupExpiredSessions();
+                break;
+            case 'optimize-tables':
+                result = await dbMaintenance.optimizeTables();
+                break;
+            case 'create-partition':
+                const year = req.body.year || new Date().getFullYear() + 1;
+                result = await dbMaintenance.createAuditLogPartition(year);
+                break;
+            case 'drop-old-partitions':
+                const yearsToKeep = req.body.yearsToKeep || 3;
+                result = await dbMaintenance.dropOldPartitions(yearsToKeep);
+                break;
+            case 'metrics':
+                result = await dbMaintenance.getPerformanceMetrics();
+                break;
+        }
+        
+        logger.info('Database maintenance operation completed', req, { 
+            operation, 
+            result 
+        });
+        
+        res.json({ success: true, operation, result });
+        
+    } catch (error) {
+        logger.error('Database maintenance operation failed', req, { 
+            operation: req.body.operation, 
+            error: error.message 
+        });
+        sendError(res, 'DATABASE_ERROR', 'Maintenance operation failed');
+    }
+});
+
+/**
+ * Serves the main index.html with injected CSRF token
+ * Dynamically injects CSRF token into meta tag for frontend security
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+app.get('/', csrfProtection, (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+        const indexPath = path.join(__dirname, '../../public/index.html');
+        let html = fs.readFileSync(indexPath, 'utf8');
+        
+        // Inject CSRF token into meta tag for frontend security
+        const csrfToken = req.csrfToken();
+        html = html.replace(
+            '<meta name="csrf-token" id="csrf-token" content="">',
+            `<meta name="csrf-token" id="csrf-token" content="${csrfToken}">`
+        );
+        
+        res.send(html);
+    } catch (error) {
+        logger.error('Failed to serve index.html', req, { error: error.message });
+        sendError(res, 'INTERNAL_ERROR', 'Internal server error');
+    }
+});
+
+// Standardized error handling middleware
+app.use(errorHandler);
 
 // 404 handler
 app.use('*', (req, res) => {
-    res.status(404).json({ error: 'Route not found' });
+    logger.warn('Route not found', req, {
+        method: req.method,
+        url: req.originalUrl,
+        ip: req.ip
+    });
+    sendError(res, 'NOT_FOUND', 'Route not found');
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-    console.log('SIGTERM received, shutting down gracefully');
+    logger.info('SIGTERM received, shutting down gracefully', null, { 
+        signal: 'SIGTERM',
+        action: 'shutdown'
+    });
     await pool.end();
     process.exit(0);
 });
 
 app.listen(PORT, () => {
-    console.log(`Portfolio API server running on port ${PORT}`);
+    const startupInfo = {
+        port: PORT,
+        environment: config.NODE_ENV,
+        nodeVersion: process.version,
+        pid: process.pid
+    };
+    
+    logger.info('Portfolio API server started', null, startupInfo);
+    
+if (config.NODE_ENV === 'production') {
+        logger.info('Security features enabled', null, {
+            features: [
+                'HTTPS enforcement',
+                'Strict CORS policy',
+                'Enhanced rate limiting',
+                'Security headers',
+                'Structured logging'
+            ]
+        });
+    } else {
+        logger.info('Development mode configuration', null, {
+            mode: 'development',
+            security: 'relaxed',
+            logging: 'structured'
+        });
+    }
 });

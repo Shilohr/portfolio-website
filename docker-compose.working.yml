@@ -1,0 +1,15 @@
+services:
+  portfolio:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - DB_HOST=localhost
+      - DB_USER=portfolio_user
+      - DB_PASSWORD=development-secure-password-32-chars-long
+      - DB_NAME=portfolio_dev
+      - DB_ROOT_PASSWORD=development-secure-root-password-32-chars-long
+      - JWT_SECRET=4b0f80a0b69304722c296c4c5876d24a345cf275d29dfa5b88b05b1b30e7266c4b0f80a0b69304722c296c4c5876d24a345cf275d29dfa5b88b05b1b30e7266c
+    restart: unless-stopped

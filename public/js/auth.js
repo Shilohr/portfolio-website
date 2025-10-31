@@ -6,6 +6,12 @@
 const loginForm = document.getElementById('loginForm');
 const loginMessage = document.getElementById('loginMessage');
 
+// Get CSRF token from meta tag
+function getCsrfToken() {
+    const metaTag = document.querySelector('meta[name="csrf-token"]');
+    return metaTag ? metaTag.getAttribute('content') : '';
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     if (loginForm) {
@@ -31,8 +37,10 @@ async function handleLogin(e) {
         
         const response = await fetch('/api/auth/login', {
             method: 'POST',
+            credentials: 'include',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': await getCsrfToken()
             },
             body: JSON.stringify(loginData)
         });
@@ -40,10 +48,6 @@ async function handleLogin(e) {
         const data = await response.json();
         
         if (response.ok) {
-            // Store token
-            localStorage.setItem('portfolio_token', data.token);
-            localStorage.setItem('portfolio_user', JSON.stringify(data.user));
-            
             showMessage('Login successful! Redirecting...', 'success');
             
             // Redirect to admin
@@ -63,48 +67,34 @@ async function handleLogin(e) {
 
 // Check Authentication Status
 function checkAuthStatus() {
-    const token = localStorage.getItem('portfolio_token');
-    const user = localStorage.getItem('portfolio_user');
-    
-    if (token && user) {
-        // Verify token is still valid
-        fetch('/api/auth/profile', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+    // Verify token is still valid via cookie
+    fetch('/api/auth/profile', {
+        credentials: 'include'
         })
         .then(response => {
             if (!response.ok) {
-                // Token invalid, clear storage
+                // Token invalid
                 logout();
             }
         })
         .catch(error => {
             console.error('Auth check error:', error);
         });
-    }
 }
 
 // Logout Function
-function logout() {
-    const token = localStorage.getItem('portfolio_token');
-    
-    // Call logout endpoint if token exists
-    if (token) {
-        fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        })
-        .catch(error => {
-            console.error('Logout API error:', error);
-        });
-    }
-    
-    // Clear local storage
-    localStorage.removeItem('portfolio_token');
-    localStorage.removeItem('portfolio_user');
+async function logout() {
+    // Call logout endpoint
+    fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+            'X-CSRF-Token': await getCsrfToken()
+        }
+    })
+.catch(error => {
+        console.error('Logout API error:', error);
+    });
     
     // Redirect to login
     window.location.href = '/login.html';
@@ -115,8 +105,10 @@ async function register(userData) {
     try {
         const response = await fetch('/api/auth/register', {
             method: 'POST',
+            credentials: 'include',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': await getCsrfToken()
             },
             body: JSON.stringify(userData)
         });
@@ -140,18 +132,9 @@ async function register(userData) {
 
 // Protected Route Access
 async function requireAuth() {
-    const token = localStorage.getItem('portfolio_token');
-    
-    if (!token) {
-        window.location.href = '/login.html';
-        return false;
-    }
-    
     try {
         const response = await fetch('/api/auth/profile', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+            credentials: 'include'
         });
         
         if (!response.ok) {
@@ -170,9 +153,21 @@ async function requireAuth() {
 }
 
 // Get Current User
-function getCurrentUser() {
-    const userStr = localStorage.getItem('portfolio_user');
-    return userStr ? JSON.parse(userStr) : null;
+async function getCurrentUser() {
+    try {
+        const response = await fetch('/api/auth/profile', {
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            return data.user;
+        }
+        return null;
+    } catch (error) {
+        console.error('Get current user error:', error);
+        return null;
+    }
 }
 
 // Show Message
@@ -194,18 +189,17 @@ function showMessage(message, type) {
 
 // API Request Helper with Auth
 async function authenticatedFetch(url, options = {}) {
-    const token = localStorage.getItem('portfolio_token');
-    
     const defaultOptions = {
+        credentials: 'include',
         headers: {
-            'Content-Type': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` })
+            'Content-Type': 'application/json'
         }
     };
     
     const finalOptions = {
         ...defaultOptions,
         ...options,
+        credentials: 'include',
         headers: {
             ...defaultOptions.headers,
             ...options.headers
@@ -231,23 +225,14 @@ async function authenticatedFetch(url, options = {}) {
 
 // Token Refresh (if implemented)
 async function refreshToken() {
-    const token = localStorage.getItem('portfolio_token');
-    
-    if (!token) {
-        return false;
-    }
-    
     try {
         const response = await fetch('/api/auth/refresh', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+            credentials: 'include'
         });
         
         if (response.ok) {
             const data = await response.json();
-            localStorage.setItem('portfolio_token', data.token);
             return data.token;
         } else {
             logout();
@@ -314,9 +299,21 @@ window.authUtils = {
     register,
     requireAuth,
     getCurrentUser,
-    getToken: () => localStorage.getItem('portfolio_token'),
-    getUser: () => JSON.parse(localStorage.getItem('portfolio_user') || '{}'),
-    isAuthenticated: () => !!localStorage.getItem('portfolio_token'),
+    getToken: () => null, // Tokens are now stored in httpOnly cookies
+    getUser: async () => {
+        const user = await getCurrentUser();
+        return user || {};
+    },
+    isAuthenticated: async () => {
+        try {
+            const response = await fetch('/api/auth/profile', {
+                credentials: 'include'
+            });
+            return response.ok;
+        } catch (error) {
+            return false;
+        }
+    },
     authenticatedFetch,
     refreshToken,
     validateLoginForm,
@@ -329,22 +326,17 @@ let tokenCheckInterval;
 function startTokenCheck() {
     // Check token validity every 5 minutes
     tokenCheckInterval = setInterval(() => {
-        const token = localStorage.getItem('portfolio_token');
-        if (token) {
-            fetch('/api/auth/profile', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    logout();
-                }
-            })
-            .catch(error => {
-                console.error('Token check error:', error);
-            });
-        }
+        fetch('/api/auth/profile', {
+            credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                logout();
+            }
+        })
+        .catch(error => {
+            console.error('Token check error:', error);
+        });
     }, 5 * 60 * 1000); // 5 minutes
 }
 
@@ -360,4 +352,4 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-console.log('🔐 Authentication module loaded');
+console.log(' Authentication module loaded');

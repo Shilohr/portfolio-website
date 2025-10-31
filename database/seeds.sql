@@ -1,6 +1,8 @@
--- Create default admin user (password: admin123 - change immediately)
-INSERT INTO users (username, email, password_hash, role) VALUES 
-('admin', 'admin@shilohrobinson.dev', '$2b$10$rOzJqQjQjQjQjQjQjQjQjOzJqQjQjQjQjQjQjQjQjQjQjQjQjQjQjQjQjQjQjQ', 'admin');
+-- SECURITY NOTE: Default admin user removed for security
+-- To create an admin user, run the following with a secure password:
+-- INSERT INTO users (username, email, password_hash, role) VALUES 
+-- ('admin', 'your-email@domain.com', '$2b$10$your-secure-hash-here', 'admin');
+-- Generate password hash using: bcrypt.hashSync('your-secure-password', 10)
 
 -- Insert sample projects
 INSERT INTO projects (title, description, github_url, live_url, featured, order_index) VALUES 

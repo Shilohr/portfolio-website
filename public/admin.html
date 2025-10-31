@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Shiloh Robinson</title>
     <meta name="description" content="Admin dashboard for managing portfolio projects">
-    <link rel="stylesheet" href="/style.css?v=1.0.0">
-    <link rel="stylesheet" href="/admin.css?v=1.0.0">
+    <link rel="stylesheet" href="/style.css?v=1.0.1">
+    <link rel="stylesheet" href="/admin.css?v=1.1.1">
 </head>
 <body>
     <!-- Background System -->
@@ -38,6 +38,7 @@
         <div class="project-form hidden" id="projectForm">
             <h2 class="neon-text">Add/Edit Project</h2>
             <form id="projectManageForm">
+                <input type="hidden" id="csrfToken" name="_csrf" value="">
                 <div class="form-group">
                     <label class="form-label" for="projectTitle">Title *</label>
                     <input type="text" id="projectTitle" name="title" class="form-input" required>
@@ -108,7 +109,7 @@
     </div>
 
     <!-- JavaScript -->
-    <script src="/script.js?v=1.0.0"></script>
-    <script src="/admin.js?v=1.0.0"></script>
+    <script type="module" src="/js/main.js?v=1.1.2"></script>
+    <script src="/admin.js?v=1.1.1"></script>
 </body>
 </html>

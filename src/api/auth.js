@@ -1,39 +1,80 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { body, validationResult } = require('express-validator');
+const { logger } = require('./utils/logger');
+const { sendError, sendSuccess, createErrorResponse } = require('./utils/errorHandler');
+const { commonValidations, handleValidationErrors } = require('./utils/validation');
+const { cache } = require('./utils/cache');
+const { createTransactionManager } = require('./utils/transaction');
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '24h';
+
+// Validate JWT secret in production
+if (process.env.NODE_ENV === 'production') {
+    if (!JWT_SECRET || JWT_SECRET.length < 32) {
+        throw new Error('JWT_SECRET must be at least 32 characters in production');
+    }
+} else if (!JWT_SECRET) {
+    // Use a more secure default for development
+    const crypto = require('crypto');
+    process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
+}
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 2 * 60 * 60 * 1000; // 2 hours
 
 // Input validation middleware
 const validateLogin = [
-    body('username').trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+    commonValidations.loginUsername,
+    commonValidations.loginPassword
 ];
 
 const validateRegister = [
-    body('username').trim().isLength({ min: 3 }).isAlphanumeric().withMessage('Username must be alphanumeric'),
-    body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-    body('password').isLength({ min: 8}).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must be 8+ chars with uppercase, lowercase, and number')
+    commonValidations.registerUsername,
+    commonValidations.email,
+    commonValidations.registerPassword
 ];
 
-// Helper functions
+/**
+ * Authentication helper functions for secure user management
+ */
+
+/**
+ * Checks if a user account is currently locked due to failed login attempts
+ * @param {Object} user - User object containing locked_until timestamp
+ * @returns {boolean} True if account is locked, false otherwise
+ */
 const isAccountLocked = (user) => {
     return user.locked_until && user.locked_until > Date.now();
 };
 
+/**
+ * Hashes a password using bcrypt with secure salt rounds
+ * @param {string} password - Plain text password to hash
+ * @returns {Promise<string>} Hashed password string
+ */
 const hashPassword = async (password) => {
     return await bcrypt.hash(password, 12);
 };
 
+/**
+ * Compares a plain text password against a bcrypt hash
+ * @param {string} password - Plain text password to verify
+ * @param {string} hash - Hashed password to compare against
+ * @returns {Promise<boolean>} True if passwords match, false otherwise
+ */
 const comparePassword = async (password, hash) => {
     return await bcrypt.compare(password, hash);
 };
 
+/**
+ * Generates a JWT token for authenticated user
+ * @param {number} userId - User's unique identifier
+ * @param {string} username - User's username
+ * @param {string} role - User's role (e.g., 'admin', 'user')
+ * @returns {string} JWT token string
+ */
 const generateToken = (userId, username, role) => {
     return jwt.sign(
         { userId, username, role },
@@ -43,12 +84,8 @@ const generateToken = (userId, username, role) => {
 };
 
 // Routes
-router.post('/register', validateRegister, async (req, res) => {
+router.post('/register', validateRegister, handleValidationErrors, async (req, res) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
 
         const { username, email, password } = req.body;
         const db = req.db;
@@ -60,39 +97,56 @@ router.post('/register', validateRegister, async (req, res) => {
         );
 
         if (existingUsers.length > 0) {
-            return res.status(409).json({ error: 'Username or email already exists' });
+            return sendError(res, 'CONFLICT', 'Username or email already exists');
         }
 
-        // Hash password and create user
-        const passwordHash = await hashPassword(password);
-        const [result] = await db.execute(
-            'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-            [username, email, passwordHash]
-        );
+        // Use transaction manager
+        const transactionManager = createTransactionManager(db);
+        
+        const result = await transactionManager.execute(async (connection) => {
+            // Hash password and create user
+            const passwordHash = await hashPassword(password);
+            const [userResult] = await connection.execute(
+                'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
+                [username, email, passwordHash]
+            );
 
-        // Log registration
-        await db.execute(
-            'INSERT INTO audit_log (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
-            [result.insertId, 'USER_REGISTERED', req.ip, req.get('User-Agent')]
-        );
+            // Log registration
+            await connection.execute(
+                'INSERT INTO audit_log (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
+                [userResult.insertId, 'USER_REGISTERED', req.ip, req.get('User-Agent')]
+            );
+            
+            logger.audit('USER_REGISTERED', req, 'user', { 
+                userId: userResult.insertId, 
+                username,
+                email 
+            });
 
-        res.status(201).json({ 
-            message: 'User registered successfully',
-            userId: result.insertId
+            return {
+                userId: userResult.insertId,
+                username,
+                email
+            };
         });
 
+        // Clear user-related cache
+        cache.invalidatePattern('user:.*');
+
+        sendSuccess(res, result, 'User registered successfully', 201);
+
     } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ error: 'Registration failed' });
+        logger.error('Registration failed', req, { 
+            error: error.message,
+            stack: error.stack,
+            requestBody: { username, email }
+        });
+        sendError(res, 'DATABASE_ERROR', 'Registration failed');
     }
 });
 
-router.post('/login', validateLogin, async (req, res) => {
+router.post('/login', validateLogin, handleValidationErrors, async (req, res) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
 
         const { username, password } = req.body;
         const db = req.db;
@@ -104,22 +158,31 @@ router.post('/login', validateLogin, async (req, res) => {
         );
 
         if (users.length === 0) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            logger.security('LOGIN_ATTEMPT_INVALID_USER', req, 'medium', { 
+                username,
+                reason: 'User not found'
+            });
+            return sendError(res, 'UNAUTHORIZED', 'Invalid credentials');
         }
 
         const user = users[0];
 
         // Check if account is locked
         if (isAccountLocked(user)) {
-            return res.status(423).json({ 
-                error: 'Account temporarily locked due to too many failed attempts',
+            logger.security('LOGIN_ATTEMPT_LOCKED_ACCOUNT', req, 'high', { 
+                userId: user.id,
+                username: user.username,
                 lockedUntil: user.locked_until
+            });
+            return sendError(res, 'FORBIDDEN', 'Account temporarily locked due to too many failed attempts', {
+                lockedUntil: user.locked_until,
+                retryAfter: Math.ceil((user.locked_until - Date.now()) / 1000)
             });
         }
 
         // Check if account is active
         if (!user.is_active) {
-            return res.status(403).json({ error: 'Account is deactivated' });
+            return sendError(res, 'FORBIDDEN', 'Account is deactivated');
         }
 
         // Verify password
@@ -134,53 +197,98 @@ router.post('/login', validateLogin, async (req, res) => {
                 [newAttempts, lockedUntil, user.id]
             );
 
-            return res.status(401).json({ error: 'Invalid credentials' });
+            logger.security('LOGIN_ATTEMPT_INVALID_PASSWORD', req, newAttempts >= MAX_LOGIN_ATTEMPTS ? 'high' : 'medium', { 
+                userId: user.id,
+                username: user.username,
+                attempts: newAttempts,
+                maxAttempts: MAX_LOGIN_ATTEMPTS,
+                accountLocked: lockedUntil !== null
+            });
+
+            return sendError(res, 'UNAUTHORIZED', 'Invalid credentials');
         }
 
-        // Reset login attempts on successful login
-        await db.execute(
-            'UPDATE users SET login_attempts = 0, locked_until = NULL, last_login = CURRENT_TIMESTAMP WHERE id = ?',
-            [user.id]
-        );
+        // Use database transaction for atomic operations
+        const connection = await db.getConnection();
+        try {
+            await connection.beginTransaction();
+            
+            // Reset login attempts on successful login
+            await connection.execute(
+                'UPDATE users SET login_attempts = 0, locked_until = NULL, last_login = CURRENT_TIMESTAMP WHERE id = ?',
+                [user.id]
+            );
 
-        // Generate JWT token
-        const token = generateToken(user.id, user.username, user.role);
+            // Generate JWT token
+            const token = generateToken(user.id, user.username, user.role);
 
-        // Store session in database
-        const tokenHash = await hashPassword(token);
-        await db.execute(
-            'INSERT INTO user_sessions (user_id, token_hash, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
-            [user.id, tokenHash, new Date(Date.now() + 24 * 60 * 60 * 1000), req.ip, req.get('User-Agent')]
-        );
+            // Store session in database
+            const tokenHash = await hashPassword(token);
+            await connection.execute(
+                'INSERT INTO user_sessions (user_id, token_hash, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
+                [user.id, tokenHash, new Date(Date.now() + 24 * 60 * 60 * 1000), req.ip, req.get('User-Agent')]
+            );
 
-        // Log successful login
-        await db.execute(
-            'INSERT INTO audit_log (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
-            [user.id, 'USER_LOGIN', req.ip, req.get('User-Agent')]
-        );
+            // Log successful login
+            await connection.execute(
+                'INSERT INTO audit_log (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
+                [user.id, 'USER_LOGIN', req.ip, req.get('User-Agent')]
+            );
+            
+            logger.audit('USER_LOGIN', req, 'user', { 
+                userId: user.id, 
+                username: user.username 
+            });
 
-        res.json({
-            message: 'Login successful',
-            token,
-            user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                role: user.role
-            }
-        });
+            await connection.commit();
+            
+            const result = {
+                token,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role
+                }
+            };
+
+            // Clear user-related cache
+            cache.invalidatePattern('user:.*');
+            cache.invalidatePattern('auth:.*');
+
+            // Set httpOnly cookie with token
+            res.cookie('portfolio_token', result.token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 24 * 60 * 60 * 1000, // 24 hours
+                path: '/'
+            });
+
+            sendSuccess(res, result.user, 'Login successful');
+            
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
 
     } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Login failed' });
+        logger.error('Login failed', req, { 
+            error: error.message,
+            stack: error.stack,
+            requestBody: { username }
+        });
+        sendError(res, 'DATABASE_ERROR', 'Login failed');
     }
 });
 
 router.post('/logout', async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
+        const token = req.cookies.portfolio_token || req.headers.authorization?.split(' ')[1];
         if (!token) {
-            return res.status(400).json({ error: 'No token provided' });
+            return sendError(res, 'VALIDATION_ERROR', 'No token provided');
         }
 
         // Decode token to get user info
@@ -198,27 +306,56 @@ router.post('/logout', async (req, res) => {
             'INSERT INTO audit_log (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
             [decoded.userId, 'USER_LOGOUT', req.ip, req.get('User-Agent')]
         );
+        
+        logger.audit('USER_LOGOUT', req, 'user', { 
+            userId: decoded.userId,
+            username: decoded.username
+        });
 
-        res.json({ message: 'Logout successful' });
+        // Clear auth cookie and CSRF cookie on logout
+        res.clearCookie('portfolio_token', {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        res.clearCookie('_csrf', {
+            path: '/',
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        sendSuccess(res, null, 'Logout successful');
 
     } catch (error) {
-        console.error('Logout error:', error);
-        res.status(500).json({ error: 'Logout failed' });
+        logger.error('Logout failed', req, { 
+            error: error.message,
+            stack: error.stack
+        });
+        sendError(res, 'DATABASE_ERROR', 'Logout failed');
     }
 });
 
-// Token validation middleware
+/**
+ * JWT token validation middleware for protected routes
+ * Validates token from cookie or Authorization header, checks session validity
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
+ * @returns {void} Calls next() if valid, sends error response if invalid
+ */
 const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1];
+    const token = req.cookies.portfolio_token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
 
     if (!token) {
-        return res.status(401).json({ error: 'Access token required' });
+        return sendError(res, 'UNAUTHORIZED', 'Access token required');
     }
 
     jwt.verify(token, JWT_SECRET, async (err, decoded) => {
         if (err) {
-            return res.status(403).json({ error: 'Invalid or expired token' });
+            return sendError(res, 'FORBIDDEN', 'Invalid or expired token');
         }
 
         try {
@@ -229,14 +366,17 @@ const authenticateToken = (req, res, next) => {
             );
 
             if (sessions.length === 0) {
-                return res.status(403).json({ error: 'Session expired or invalid' });
+                return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
             }
 
             req.user = decoded;
             next();
         } catch (error) {
-            console.error('Token validation error:', error);
-            res.status(500).json({ error: 'Token validation failed' });
+            logger.error('Token validation failed', req, { 
+                error: error.message,
+                stack: error.stack
+            });
+            sendError(res, 'DATABASE_ERROR', 'Token validation failed');
         }
     });
 };
@@ -251,13 +391,16 @@ router.get('/profile', authenticateToken, async (req, res) => {
         );
 
         if (users.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+            return sendError(res, 'NOT_FOUND', 'User not found');
         }
 
-        res.json({ user: users[0] });
+        sendSuccess(res, { user: users[0] }, 'Profile fetched successfully');
     } catch (error) {
-        console.error('Profile error:', error);
-        res.status(500).json({ error: 'Failed to fetch profile' });
+        logger.error('Failed to fetch profile', req, { 
+            error: error.message,
+            stack: error.stack
+        });
+        sendError(res, 'DATABASE_ERROR', 'Failed to fetch profile');
     }
 });
 

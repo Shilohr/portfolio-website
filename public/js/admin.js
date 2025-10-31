@@ -4,18 +4,45 @@
 
 // Utility Functions
 const utils = {
+    // CSRF Token management
+    async getCsrfToken() {
+        try {
+            const response = await fetch('http://localhost:8080/api/csrf-token', {
+                credentials: 'include'
+            });
+            const data = await response.json();
+            return data.csrfToken;
+        } catch (error) {
+            console.error('Failed to fetch CSRF token:', error);
+            throw error;
+        }
+    },
+
     // API Request helper
     async apiRequest(endpoint, options = {}) {
         const url = `http://localhost:8080/api${endpoint}`;
         const token = this.getToken();
         
         const config = {
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
                 ...(token && { 'Authorization': `Bearer ${token}` })
             },
             ...options
         };
+
+        // Add CSRF token to state-changing requests
+        const method = (options.method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            try {
+                const csrfToken = await this.getCsrfToken();
+                config.headers['X-CSRF-Token'] = csrfToken;
+            } catch (error) {
+                console.error('Failed to get CSRF token for request:', error);
+                throw new Error('Security validation failed');
+            }
+        }
 
         try {
             const response = await fetch(url, config);
@@ -32,17 +59,17 @@ const utils = {
         }
     },
 
-    // Token management
+    // Token management - tokens are now stored in httpOnly cookies
     getToken() {
-        return localStorage.getItem('authToken');
+        return null; // Tokens are now in httpOnly cookies
     },
 
     setToken(token) {
-        localStorage.setItem('authToken', token);
+        console.warn('setToken is deprecated - tokens are now stored in httpOnly cookies');
     },
 
     removeToken() {
-        localStorage.removeItem('authToken');
+        console.warn('removeToken is deprecated - tokens are now stored in httpOnly cookies');
     },
 
     // Alert system
@@ -177,7 +204,7 @@ const forms = {
         errorElements.forEach(element => element.remove());
     },
 
-    showError(field, message) {
+    showFieldError(field, message) {
         // Remove existing error
         const existingError = field.parentElement.querySelector('.form-error');
         if (existingError) {
@@ -231,8 +258,14 @@ class AuthManager {
     async logout() {
         try {
             if (this.token) {
+                // Get fresh CSRF token for logout operation
+                const csrfToken = await utils.getCsrfToken();
+                
                 await utils.apiRequest('/auth/logout', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    }
                 });
             }
         } catch (error) {
@@ -375,7 +408,7 @@ class AdminDashboard {
                 <p class="project-description">${utils.truncateText(project.description || 'No description', 100)}</p>
                 <div class="project-meta">
                     <span class="status-badge status-${project.status}">${project.status}</span>
-                    ${project.featured ? '<span class="featured-badge">⭐ Featured</span>' : ''}
+                    ${project.featured ? '<span class="featured-badge"> Featured</span>' : ''}
                 </div>
                 <div class="project-technologies">
                     ${project.technologies.slice(0, 3).map(tech => `<span class="tech-tag">${tech}</span>`).join('')}
@@ -438,8 +471,8 @@ class AdminDashboard {
                 </div>
                 <p class="repo-description">${utils.truncateText(repo.description || 'No description', 100)}</p>
                 <div class="repo-stats">
-                    <span class="repo-stat">⭐ ${repo.stars || 0}</span>
-                    <span class="repo-stat">🍴 ${repo.forks || 0}</span>
+                    <span class="repo-stat"> ${repo.stars || 0}</span>
+                    <span class="repo-stat"> ${repo.forks || 0}</span>
                     ${repo.language ? `<span class="repo-stat">${repo.language}</span>` : ''}
                 </div>
                 <div class="repo-date">Updated: ${utils.formatDate(repo.updated_at)}</div>
@@ -449,10 +482,20 @@ class AdminDashboard {
         container.innerHTML = reposHTML;
     }
 
-    showProjectForm(project = null) {
+    async showProjectForm(project = null) {
         const form = document.getElementById('projectForm');
         const formTitle = form.querySelector('h2');
         const formElement = document.getElementById('projectManageForm');
+        
+        try {
+            // Get fresh CSRF token for the form
+            const csrfToken = await utils.getCsrfToken();
+            document.getElementById('csrfToken').value = csrfToken;
+        } catch (error) {
+            console.error('Failed to load CSRF token:', error);
+            utils.showAlert('Security validation failed. Please refresh the page.', 'error');
+            return;
+        }
         
         if (project) {
             formTitle.textContent = 'Edit Project';
@@ -487,6 +530,7 @@ class AdminDashboard {
         const form = e.target;
         const formData = new FormData(form);
         const projectId = form.dataset.projectId;
+        const csrfToken = formData.get('_csrf');
         
         const projectData = {
             title: formData.get('title'),
@@ -503,7 +547,12 @@ class AdminDashboard {
 
         // Basic validation
         if (!projectData.title.trim()) {
-            forms.showError(document.getElementById('projectTitle'), 'Title is required');
+            forms.showFieldError(document.getElementById('projectTitle'), 'Title is required');
+            return;
+        }
+
+        if (!csrfToken) {
+            utils.showAlert('Security validation failed. Please refresh the page.', 'error');
             return;
         }
 
@@ -512,12 +561,18 @@ class AdminDashboard {
             if (projectId) {
                 response = await utils.apiRequest(`/projects/${projectId}`, {
                     method: 'PUT',
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    },
                     body: JSON.stringify(projectData)
                 });
                 utils.showAlert('Project updated successfully', 'success');
             } else {
                 response = await utils.apiRequest('/projects', {
                     method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    },
                     body: JSON.stringify(projectData)
                 });
                 utils.showAlert('Project created successfully', 'success');
@@ -543,8 +598,14 @@ class AdminDashboard {
         }
 
         try {
+            // Get fresh CSRF token for delete operation
+            const csrfToken = await utils.getCsrfToken();
+            
             await utils.apiRequest(`/projects/${projectId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-Token': csrfToken
+                }
             });
             
             utils.showAlert('Project deleted successfully', 'success');
@@ -562,8 +623,14 @@ class AdminDashboard {
             syncBtn.textContent = 'Syncing...';
             syncBtn.disabled = true;
 
+            // Get fresh CSRF token for sync operation
+            const csrfToken = await utils.getCsrfToken();
+
             const response = await utils.apiRequest('/github/sync', {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrfToken
+                }
             });
 
             utils.showAlert(`Successfully synced ${response.syncedCount || 0} repositories`, 'success');

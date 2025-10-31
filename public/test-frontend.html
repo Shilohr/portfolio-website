@@ -39,27 +39,27 @@
                 // Test health endpoint
                 const healthResponse = await fetch('/api/health');
                 const healthData = await healthResponse.json();
-                html += `<p class="success">✓ Health endpoint: ${healthData.status}</p>`;
+                html += `<p class="success">[SUCCESS] Health endpoint: ${healthData.status}</p>`;
             } catch (error) {
-                html += `<p class="error">✗ Health endpoint failed: ${error.message}</p>`;
+                html += `<p class="error">[ERROR] Health endpoint failed: ${error.message}</p>`;
             }
 
             try {
                 // Test projects endpoint
                 const projectsResponse = await fetch('/api/projects');
                 const projectsData = await projectsResponse.json();
-                html += `<p class="success">✓ Projects endpoint: ${projectsData.projects.length} projects loaded</p>`;
+                html += `<p class="success">[SUCCESS] Projects endpoint: ${projectsData.projects.length} projects loaded</p>`;
             } catch (error) {
-                html += `<p class="error">✗ Projects endpoint failed: ${error.message}</p>`;
+                html += `<p class="error">[ERROR] Projects endpoint failed: ${error.message}</p>`;
             }
 
             try {
                 // Test GitHub endpoint
                 const githubResponse = await fetch('/api/github/repos');
                 const githubData = await githubResponse.json();
-                html += `<p class="success">✓ GitHub endpoint: ${githubData.repositories.length} repos loaded</p>`;
+                html += `<p class="success">[SUCCESS] GitHub endpoint: ${githubData.repositories.length} repos loaded</p>`;
             } catch (error) {
-                html += `<p class="error">✗ GitHub endpoint failed: ${error.message}</p>`;
+                html += `<p class="error">[ERROR] GitHub endpoint failed: ${error.message}</p>`;
             }
 
             results.innerHTML = html;
@@ -75,11 +75,11 @@
             cssLink.rel = 'stylesheet';
             cssLink.href = 'style.css';
             cssLink.onload = () => {
-                html += '<p class="success">✓ CSS file loaded successfully</p>';
+                html += '<p class="success">[SUCCESS] CSS file loaded successfully</p>';
                 results.innerHTML = html;
             };
             cssLink.onerror = () => {
-                html += '<p class="error">✗ CSS file failed to load</p>';
+                html += '<p class="error">[ERROR] CSS file failed to load</p>';
                 results.innerHTML = html;
             };
             document.head.appendChild(cssLink);
@@ -88,11 +88,11 @@
             const script = document.createElement('script');
             script.src = 'js/script.js';
             script.onload = () => {
-                html += '<p class="success">✓ Main JavaScript file loaded successfully</p>';
+                html += '<p class="success">[SUCCESS] Main JavaScript file loaded successfully</p>';
                 results.innerHTML = html;
             };
             script.onerror = () => {
-                html += '<p class="error">✗ Main JavaScript file failed to load</p>';
+                html += '<p class="error">[ERROR] Main JavaScript file failed to load</p>';
                 results.innerHTML = html;
             };
             document.head.appendChild(script);
@@ -106,10 +106,10 @@
         setTimeout(() => {
             const img = new Image();
             img.onload = () => {
-                document.getElementById('file-results').innerHTML += '<p class="success">✓ Space images load correctly</p>';
+                document.getElementById('file-results').innerHTML += '<p class="success">[SUCCESS] Space images load correctly</p>';
             };
             img.onerror = () => {
-                document.getElementById('file-results').innerHTML += '<p class="error">✗ Space images failed to load</p>';
+                document.getElementById('file-results').innerHTML += '<p class="error">[ERROR] Space images failed to load</p>';
             };
             img.src = 'assets/images/weic2208a.jpg';
         }, 1000);

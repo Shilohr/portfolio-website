@@ -1,0 +1,114 @@
+{
+  "production": {
+    "level": "info",
+    "format": "json",
+    "transports": {
+      "file": {
+        "enabled": true,
+        "directory": "logs",
+        "errorFile": "error-%DATE%.log",
+        "combinedFile": "combined-%DATE%.log",
+        "maxSize": "20m",
+        "maxFiles": "14d",
+        "datePattern": "YYYY-MM-DD"
+      },
+      "console": {
+        "enabled": false
+      }
+    },
+    "metadata": {
+      "service": "portfolio-api",
+      "environment": "production",
+      "version": "1.0.0"
+    },
+    "sanitization": {
+      "enabled": true,
+      "sensitiveFields": [
+        "password",
+        "password_hash",
+        "token",
+        "authorization",
+        "secret",
+        "key",
+        "api_key",
+        "jwt_secret",
+        "db_password",
+        "session",
+        "cookie"
+      ]
+    },
+    "monitoring": {
+      "enabled": true,
+      "reportSchedule": "0 2 * * *",
+      "cleanupSchedule": "0 3 * * 0",
+      "retentionDays": 30,
+      "alerts": {
+        "errorRateThreshold": 5,
+        "securityEventThreshold": 10,
+        "performanceThreshold": 1000
+      }
+    }
+  },
+  "development": {
+    "level": "debug",
+    "format": "console",
+    "transports": {
+      "file": {
+        "enabled": false
+      },
+      "console": {
+        "enabled": true,
+        "colorize": true,
+        "timestamp": "HH:mm:ss"
+      }
+    },
+    "metadata": {
+      "service": "portfolio-api",
+      "environment": "development",
+      "version": "1.0.0"
+    },
+    "sanitization": {
+      "enabled": true,
+      "sensitiveFields": [
+        "password",
+        "password_hash",
+        "token",
+        "authorization",
+        "secret",
+        "key",
+        "api_key",
+        "jwt_secret",
+        "db_password",
+        "session",
+        "cookie"
+      ]
+    },
+    "monitoring": {
+      "enabled": false
+    }
+  },
+  "test": {
+    "level": "error",
+    "format": "console",
+    "transports": {
+      "file": {
+        "enabled": false
+      },
+      "console": {
+        "enabled": true,
+        "colorize": false
+      }
+    },
+    "metadata": {
+      "service": "portfolio-api",
+      "environment": "test",
+      "version": "1.0.0"
+    },
+    "sanitization": {
+      "enabled": true
+    },
+    "monitoring": {
+      "enabled": false
+    }
+  }
+}

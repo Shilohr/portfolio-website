@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Projects - Shiloh Robinson</title>
     <meta name="description" content="Browse all projects by Shiloh Robinson">
-    <link rel="stylesheet" href="/style.css?v=1.0.0">
+    <link rel="stylesheet" href="/style.css?v=1.0.1">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -53,8 +53,9 @@
     <section class="section">
         <div class="projects-header">
             <h1 class="section-title neon-text">All Projects</h1>
-            <div class="projects-filters">
-                <select class="form-select" id="languageFilter">
+            <div class="projects-filters" role="group" aria-label="Project filters">
+                <label for="languageFilter" class="sr-only">Filter by programming language</label>
+                <select class="form-select" id="languageFilter" aria-label="Filter projects by programming language">
                     <option value="">All Languages</option>
                     <option value="JavaScript">JavaScript</option>
                     <option value="Python">Python</option>
@@ -62,12 +63,14 @@
                     <option value="Go">Go</option>
                     <option value="Rust">Rust</option>
                 </select>
-                <select class="form-select" id="sortFilter">
+                <label for="sortFilter" class="sr-only">Sort projects</label>
+                <select class="form-select" id="sortFilter" aria-label="Sort projects by">
                     <option value="stars">Most Stars</option>
                     <option value="updated">Recently Updated</option>
                     <option value="name">Name A-Z</option>
                 </select>
-                <input type="text" class="form-input" id="searchInput" placeholder="Search projects...">
+                <label for="searchInput" class="sr-only">Search projects</label>
+                <input type="text" class="form-input" id="searchInput" placeholder="Search projects..." aria-label="Search projects by name or description" autocomplete="off">
             </div>
         </div>
         
@@ -81,7 +84,7 @@
     </section>
 
     <!-- JavaScript -->
-    <script src="/script.js?v=1.0.0"></script>
-    <script src="/projects.js?v=1.0.0"></script>
+    <script type="module" src="/js/main.js?v=1.1.2"></script>
+    <script src="/projects.js?v=1.1.1"></script>
 </body>
 </html>

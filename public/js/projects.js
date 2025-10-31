@@ -2,6 +2,19 @@
 // PROJECTS PAGE JAVASCRIPT
 // ===================================
 
+// XSS Protection Utility
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;")
+        .replace(/\//g, "&#x2F;")
+        .replace(/=/g, "&#x3D;");
+}
+
 class ProjectsPage {
     constructor() {
         this.projects = [];
@@ -96,7 +109,7 @@ class ProjectsPage {
                 params.append('search', this.filters.search);
             }
 
-            const response = await fetch(`${this.apiBase}/projects?${params}`);
+            const response = await fetch(`${this.apiBase}/projects?${params}`, { credentials: 'include' });
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -104,10 +117,10 @@ class ProjectsPage {
 
             const data = await response.json();
             
-            this.projects = data.projects || [];
-            this.currentPage = data.pagination?.page || 1;
-            this.totalPages = data.pagination?.pages || 1;
-            this.totalProjects = data.pagination?.total || 0;
+            this.projects = data.data?.projects || [];
+            this.currentPage = data.data?.pagination?.page || 1;
+            this.totalPages = data.data?.pagination?.pages || 1;
+            this.totalProjects = data.data?.pagination?.total || 0;
 
             this.renderProjects();
             this.renderPagination();
@@ -131,9 +144,9 @@ class ProjectsPage {
     showErrorState(container, message) {
         container.innerHTML = `
             <div class="error-state text-center" style="grid-column: 1 / -1;">
-                <div class="error-icon">🚨</div>
+                <div class="error-icon"></div>
                 <h3 class="neon-pink">Error Loading Projects</h3>
-                <p>${message}</p>
+                <p>${escapeHtml(message)}</p>
                 <button class="btn" onclick="projectsPage.loadProjects()">Try Again</button>
             </div>
         `;
@@ -145,7 +158,7 @@ class ProjectsPage {
         if (this.projects.length === 0) {
             grid.innerHTML = `
                 <div class="no-projects text-center" style="grid-column: 1 / -1;">
-                    <div class="no-results-icon">🔍</div>
+                    <div class="no-results-icon"></div>
                     <h3 class="neon-text">No Projects Found</h3>
                     <p>No projects match your current filters. Try adjusting your search criteria.</p>
                     <button class="btn btn-outline" onclick="projectsPage.resetFilters()">Reset Filters</button>
@@ -167,44 +180,44 @@ class ProjectsPage {
     createProjectCard(project, index) {
         const technologies = project.technologies && project.technologies.length > 0 
             ? project.technologies.slice(0, 4).map(tech => 
-                `<span class="tech-tag">${tech}</span>`
+                `<span class="tech-tag">${escapeHtml(tech)}</span>`
             ).join('')
             : '';
 
-        const featuredBadge = project.featured ? '<div class="featured-badge">⭐ Featured</div>' : '';
+        const featuredBadge = project.featured ? '<div class="featured-badge"> Featured</div>' : '';
         
         const language = project.primary_language || project.language || '';
         const languageColor = this.getLanguageColor(language);
         
         return `
-            <div class="project-card glass-card" data-id="${project.id}" style="animation-delay: ${index * 0.1}s">
+            <div class="project-card glass-card" data-id="${escapeHtml(project.id)}" style="animation-delay: ${index * 0.1}s">
                 ${featuredBadge}
                 <div class="project-header">
                     <div class="project-title-container">
-                        <h3 class="project-title">${project.title || project.name}</h3>
-                        ${language ? `<span class="project-language" style="background: ${languageColor}">${language}</span>` : ''}
+                        <h3 class="project-title">${escapeHtml(project.title || project.name)}</h3>
+                        ${language ? `<span class="project-language" style="background: ${languageColor}">${escapeHtml(language)}</span>` : ''}
                     </div>
                     <div class="project-stats">
-                        ${project.stars !== undefined ? `<span class="stat">⭐ ${project.stars}</span>` : ''}
-                        ${project.forks !== undefined ? `<span class="stat">🍴 ${project.forks}</span>` : ''}
+                        ${project.stars !== undefined ? `<span class="stat"> ${project.stars}</span>` : ''}
+                        ${project.forks !== undefined ? `<span class="stat"> ${project.forks}</span>` : ''}
                     </div>
                 </div>
                 
                 <p class="project-description">
-                    ${project.description || 'No description available'}
+                    ${escapeHtml(project.description || 'No description available')}
                 </p>
                 
                 ${technologies ? `<div class="project-technologies">${technologies}</div>` : ''}
                 
                 <div class="project-meta">
-                    <span class="project-status status-${project.status || 'active'}">${project.status || 'Active'}</span>
-                    <span class="project-date">${this.formatDate(project.updated_at || project.created_at)}</span>
+                    <span class="project-status status-${escapeHtml(project.status || 'active')}">${escapeHtml(project.status || 'Active')}</span>
+                    <span class="project-date">${escapeHtml(this.formatDate(project.updated_at || project.created_at))}</span>
                 </div>
                 
                 <div class="project-actions">
-                    ${project.github_url ? `<a href="${project.github_url}" target="_blank" class="btn btn-small btn-secondary">GitHub</a>` : ''}
-                    ${project.live_url ? `<a href="${project.live_url}" target="_blank" class="btn btn-small">Live Demo</a>` : ''}
-                    ${project.html_url ? `<a href="${project.html_url}" target="_blank" class="btn btn-small">View</a>` : ''}
+                    ${project.github_url ? `<a href="${escapeHtml(project.github_url)}" target="_blank" class="btn btn-small btn-secondary">GitHub</a>` : ''}
+                    ${project.live_url ? `<a href="${escapeHtml(project.live_url)}" target="_blank" class="btn btn-small">Live Demo</a>` : ''}
+                    ${project.html_url ? `<a href="${escapeHtml(project.html_url)}" target="_blank" class="btn btn-small">View</a>` : ''}
                 </div>
             </div>
         `;
@@ -381,12 +394,12 @@ class ProjectsPage {
                             ` : ''}
                             ${project.stars !== undefined ? `
                                 <div class="meta-item">
-                                    <strong>Stars:</strong> ⭐ ${project.stars}
+                                    <strong>Stars:</strong>  ${project.stars}
                                 </div>
                             ` : ''}
                             ${project.forks !== undefined ? `
                                 <div class="meta-item">
-                                    <strong>Forks:</strong> 🍴 ${project.forks}
+                                    <strong>Forks:</strong>  ${project.forks}
                                 </div>
                             ` : ''}
                         </div>
