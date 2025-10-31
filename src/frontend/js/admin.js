@@ -242,7 +242,6 @@ class AuthManager {
     }
 
     init() {
-        this.token = utils.getToken();
         this.setupLogout();
         this.checkProtectedAccess();
     }
@@ -256,23 +255,19 @@ class AuthManager {
 
     async logout() {
         try {
-            if (this.token) {
-                // Get fresh CSRF token for logout operation
-                const csrfToken = await utils.getCsrfToken();
-                
-                await utils.apiRequest('/auth/logout', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-Token': csrfToken
-                    }
-                });
-            }
+            // Get fresh CSRF token for logout operation
+            const csrfToken = await utils.getCsrfToken();
+            
+            await utils.apiRequest('/auth/logout', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrfToken
+                }
+            });
         } catch (error) {
             console.error('Logout error:', error);
         } finally {
-            this.token = null;
             this.user = null;
-            utils.removeToken();
             utils.showAlert('Logged out successfully', 'success');
             setTimeout(() => {
                 window.location.href = 'login.html';
@@ -281,20 +276,11 @@ class AuthManager {
     }
 
     async checkProtectedAccess() {
-        if (!this.token) {
-            utils.showAlert('Please login to access this page', 'warning');
-            setTimeout(() => {
-                window.location.href = 'login.html';
-            }, 1500);
-            return;
-        }
-
         try {
             const response = await utils.apiRequest('/auth/profile');
             this.user = response.user;
         } catch (error) {
-            console.error('Token validation failed:', error);
-            utils.removeToken();
+            console.error('Authentication check failed:', error);
             utils.showAlert('Session expired. Please login again.', 'warning');
             setTimeout(() => {
                 window.location.href = 'login.html';
@@ -307,7 +293,7 @@ class AuthManager {
     }
 
     isAuthenticated() {
-        return !!this.token && !!this.user;
+        return !!this.user;
     }
 
     isAdmin() {
@@ -324,7 +310,10 @@ class AdminDashboard {
         this.init();
     }
 
-    init() {
+    async init() {
+        // Wait for authentication check to complete
+        await this.auth.checkProtectedAccess();
+        
         // Only initialize if authenticated
         if (!this.auth.isAuthenticated()) {
             return;
@@ -644,10 +633,11 @@ class AdminDashboard {
 }
 
 // Initialize admin dashboard when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // Only initialize on admin page
     if (window.location.pathname.includes('admin.html')) {
-        new AdminDashboard();
+        const dashboard = new AdminDashboard();
+        await dashboard.init();
     }
 });
 
