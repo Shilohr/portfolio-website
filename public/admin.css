@@ -1,0 +1,218 @@
+/* Admin Dashboard Specific Styles */
+
+/* Admin Container */
+.admin-container {
+    position: relative;
+    z-index: 10;
+    min-height: 100vh;
+    padding: 2rem;
+    color: var(--text-primary);
+}
+
+/* Admin Header */
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border-accent);
+}
+
+.admin-title {
+    font-family: var(--font-retro);
+    font-size: 2.5rem;
+    font-weight: 700;
+    text-shadow: 0 0 20px var(--primary);
+}
+
+.admin-nav {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Admin Content */
+.admin-content {
+    display: grid;
+    gap: 2rem;
+}
+
+.admin-section {
+    background: rgba(10, 10, 11, 0.9);
+    border: 1px solid var(--border-accent);
+    border-radius: 8px;
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+}
+
+.section-title {
+    font-family: var(--font-retro);
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--primary);
+}
+
+/* Forms */
+.admin-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.form-group {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.form-label {
+    font-family: var(--font-body);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-accent);
+    border-radius: 4px;
+    padding: 0.75rem;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 10px rgba(100, 90, 122, 0.3);
+}
+
+.form-textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+/* Buttons */
+.btn {
+    background: var(--button-primary);
+    border: none;
+    border-radius: 4px;
+    padding: 0.75rem 1.5rem;
+    color: white;
+    font-family: var(--font-body);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    background: var(--primary);
+    box-shadow: 0 0 15px rgba(100, 90, 122, 0.5);
+}
+
+.btn-secondary {
+    background: var(--secondary);
+}
+
+.btn-secondary:hover {
+    background: var(--nebula-burgundy);
+}
+
+.btn-danger {
+    background: var(--warning);
+}
+
+.btn-danger:hover {
+    background: var(--cosmic-rust);
+}
+
+/* Project List */
+.project-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.project-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-accent);
+    border-radius: 4px;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.project-info h3 {
+    font-family: var(--font-retro);
+    color: var(--primary);
+    margin-bottom: 0.5rem;
+}
+
+.project-info p {
+    color: var(--text-primary);
+    opacity: 0.8;
+}
+
+.project-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Status Messages */
+.status-message {
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    font-family: var(--font-body);
+}
+
+.status-success {
+    background: rgba(90, 123, 156, 0.2);
+    border: 1px solid var(--success);
+    color: var(--success);
+}
+
+.status-error {
+    background: rgba(100, 56, 34, 0.2);
+    border: 1px solid var(--warning);
+    color: var(--warning);
+}
+
+/* Loading State */
+.loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    font-family: var(--font-retro);
+    color: var(--primary);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .admin-container {
+        padding: 1rem;
+    }
+    
+    .admin-header {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .admin-title {
+        font-size: 2rem;
+    }
+    
+    .project-item {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .project-actions {
+        justify-content: center;
+    }
+}

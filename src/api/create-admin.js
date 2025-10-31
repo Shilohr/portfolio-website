@@ -5,7 +5,7 @@ const path = require('path');
 async function createAdminUser() {
     try {
         // Path to the JSON database
-        const dbPath = path.join(__dirname, 'portfolio.json');
+        const dbPath = '/app/portfolio.json';
         
         // Read current database
         const data = JSON.parse(await fs.readFile(dbPath, 'utf8'));

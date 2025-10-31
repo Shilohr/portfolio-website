@@ -26,6 +26,7 @@ RUN apk add --no-cache \
     nginx \
     dumb-init \
     curl \
+    shadow \
     && rm -rf /var/cache/apk/* \
     && addgroup -g 1001 -S appgroup \
     && adduser -S -D -H -u 1001 -h /app -s /sbin/nologin -G appgroup appuser \
@@ -41,16 +42,17 @@ COPY --from=builder --chown=appuser:appgroup /app/api ./api
 COPY --chown=appuser:appgroup public/ /var/www/html/
 COPY --chown=appuser:appgroup nginx.conf /etc/nginx/nginx.conf
 
+# Database files will be mounted via volumes, ownership fixed in entrypoint
+
 # Create secure startup script with proper permissions
 RUN echo '#!/bin/sh' > /start.sh && \
     echo 'echo "Starting secure portfolio application..."' >> /start.sh && \
     echo 'mkdir -p /var/lib/nginx/tmp/client_body /var/lib/nginx/tmp/proxy /var/lib/nginx/tmp/fastcgi /var/lib/nginx/tmp/uwsgi /var/lib/nginx/tmp/scgi' >> /start.sh && \
-    echo 'mkdir -p /var/lib/nginx/logs /tmp && chown -R appuser:appgroup /var/lib/nginx/logs /tmp' >> /start.sh && \
-    echo 'touch /var/lib/nginx/logs/error.log /var/lib/nginx/logs/access.log && chown appuser:appgroup /var/lib/nginx/logs/*.log' >> /start.sh && \
+    echo 'mkdir -p /var/lib/nginx/logs /tmp' >> /start.sh && \
+    echo 'touch /var/lib/nginx/logs/error.log /var/lib/nginx/logs/access.log' >> /start.sh && \
     echo 'nginx -g "daemon off;" &' >> /start.sh && \
     echo 'cd /app/api && exec dumb-init npm start' >> /start.sh && \
-    chmod 755 /start.sh && \
-    chown appuser:appgroup /start.sh
+    chmod 755 /start.sh
 
 # Create Node.js based health check script with optimized permissions
 RUN echo '#!/usr/bin/env node' > /healthcheck.js && \

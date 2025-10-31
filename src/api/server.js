@@ -13,13 +13,14 @@ const { csrfProtection, csrfTokenMiddleware, getCsrfToken, csrfErrorHandler } = 
 const { errorHandler, sendSuccess, sendError } = require('./utils/errorHandler');
 const { commonValidations, handleValidationErrors } = require('./utils/validation');
 const DatabaseMaintenance = require('./utils/dbMaintenance');
+// Load environment variables before requiring modules that depend on them
+dotenv.config({ path: '../../.env' });
+
 const { cache } = require('./utils/cache');
 const { performanceMonitor, requestMonitor, monitorQuery } = require('./utils/performanceMonitor');
 const authRoutes = require('./auth');
 const projectsRoutes = require('./projects');
 const githubRoutes = require('./github');
-
-dotenv.config();
 
 // Validate environment configuration on startup
 let config;
@@ -162,7 +163,7 @@ app.use('/api/auth/logout', csrfProtection);
 
 // SQLite database connection
 const pool = createPool({
-    database: config.DB_NAME || 'portfolio'
+    database: '/app/portfolio.json'
 });
 
 // Database connection pool monitoring
@@ -282,6 +283,7 @@ if (config.NODE_ENV === 'production') {
 // Static file serving
 app.use(express.static('/var/www/html'));
 
+// Database connection middleware - MUST be before routes that need database access
 app.use(async (req, res, next) => {
     try {
         const connection = await pool.getConnection();
@@ -293,12 +295,7 @@ app.use(async (req, res, next) => {
     }
 });
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/projects', projectsRoutes);
-app.use('/api/github', githubRoutes);
-
-// CSRF token endpoint
+// CSRF token endpoint (needs database access)
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
     // Set additional security headers for the token endpoint
     res.set({
@@ -313,6 +310,11 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
         timestamp: Date.now()
     });
 });
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/projects', projectsRoutes);
+app.use('/api/github', githubRoutes);
 
 /**
  * Health check endpoint with comprehensive database monitoring

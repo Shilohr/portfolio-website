@@ -8,19 +8,19 @@ const { cache } = require('./utils/cache');
 const { createTransactionManager } = require('./utils/transaction');
 const router = express.Router();
 
+// Always ensure JWT_SECRET exists
+if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('JWT_SECRET must be at least 32 characters in production');
+    } else {
+        // Use a more secure default for development
+        const crypto = require('crypto');
+        process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
+    }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '24h';
-
-// Validate JWT secret in production
-if (process.env.NODE_ENV === 'production') {
-    if (!JWT_SECRET || JWT_SECRET.length < 32) {
-        throw new Error('JWT_SECRET must be at least 32 characters in production');
-    }
-} else if (!JWT_SECRET) {
-    // Use a more secure default for development
-    const crypto = require('crypto');
-    process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
-}
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 2 * 60 * 60 * 1000; // 2 hours
 
@@ -76,6 +76,9 @@ const comparePassword = async (password, hash) => {
  * @returns {string} JWT token string
  */
 const generateToken = (userId, username, role) => {
+    if (!JWT_SECRET) {
+        throw new Error('JWT_SECRET is not defined in generateToken');
+    }
     return jwt.sign(
         { userId, username, role },
         JWT_SECRET,
@@ -145,9 +148,20 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
     }
 });
 
+// Test route without database
+router.post('/login-test', async (req, res) => {
+    try {
+        logger.info('Login test route hit', req, { body: req.body });
+        res.json({ success: true, message: 'Test route works' });
+    } catch (error) {
+        logger.error('Login test failed', req, { error: error.message });
+        res.status(500).json({ error: 'Test failed' });
+    }
+});
+
+// Login route
 router.post('/login', validateLogin, handleValidationErrors, async (req, res) => {
     try {
-
         const { username, password } = req.body;
         const db = req.db;
 
@@ -275,10 +289,10 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
         }
 
     } catch (error) {
-        logger.error('Login failed', req, { 
+logger.error('Login failed', req, { 
             error: error.message,
             stack: error.stack,
-            requestBody: { username }
+            requestBody: { username: req.body?.username || 'unknown' }
         });
         sendError(res, 'DATABASE_ERROR', 'Login failed');
     }
@@ -361,11 +375,25 @@ const authenticateToken = (req, res, next) => {
         try {
             const db = req.db;
             const [sessions] = await db.execute(
-                'SELECT id FROM user_sessions WHERE user_id = ? AND token_hash = ? AND is_active = TRUE AND expires_at > NOW()',
-                [decoded.userId, await hashPassword(token)]
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ?',
+                [decoded.userId]
             );
 
             if (sessions.length === 0) {
+                return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
+            }
+
+            // Verify token hash against stored hash
+            let validSession = null;
+            for (const session of sessions) {
+                const isValid = await comparePassword(token, session.token_hash);
+                if (isValid) {
+                    validSession = session;
+                    break;
+                }
+            }
+
+            if (!validSession) {
                 return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
             }
 

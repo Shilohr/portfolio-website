@@ -1,0 +1,250 @@
+{
+  "projects": [],
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@example.com",
+      "password_hash": "$2a$10$N1UP1fN8TtyCv3Ka4J82eequg4EQwGxUzC0yD5IDo/rrPYq6LThae",
+      "role": "admin",
+      "is_active": true,
+      "login_attempts": 1,
+      "locked_until": null,
+      "created_at": "2025-10-31T11:12:23.952Z",
+      "updated_at": "2025-10-31T11:12:23.952Z"
+    }
+  ],
+  "sessions": [
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$6bsnNmO7yyuDv56tInN7c.OYznOIwWJviqCDiqvnw48dgb3xu4ggq",
+      "expires_at": "2025-11-01T20:59:52.644Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 1
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$YMPGDG6cXnhgjMEocvRy8e01zgaUdgJ8NnOSaH7To4Vt.zGuvjTGm",
+      "expires_at": "2025-11-01T21:02:01.499Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 2
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$6iX/SK6vO6itDIBcFGNzxOOlqBuP0H0vLAf.WkOo2gHFu4ZM2wPzu",
+      "expires_at": "2025-11-01T21:02:31.776Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 3
+    }
+  ],
+  "audit_log": [
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 1
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 2
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 3
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 4
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 5
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 6
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 7
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 8
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 9
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 10
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 11
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 12
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 13
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 14
+    },
+    {
+      "user_id": 1,
+      "action": "USER_LOGIN",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 15
+    }
+  ],
+  "github_cache": {},
+  "github_repos": [],
+  "user_sessions": [
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$8wD36Ff76ZdIv9HJ3VHpHewrRX4DID6ahSiTyaEUNcpnG2arfhu1K",
+      "expires_at": "2025-11-01T11:19:01.043Z",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 1
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$T4sEemL2eIgdj581vrN6G.AwQyjQjdKo5uYsxeLJza.b6Gdg5ZmZe",
+      "expires_at": "2025-11-01T11:19:34.641Z",
+      "ip_address": "::1",
+      "user_agent": "curl/8.16.0",
+      "id": 2
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$rIXKBvMgBmFnGrZZfEjj0eHyMgVpMCNe4F7AeHvdn15wbgeVDGsi.",
+      "expires_at": "2025-11-01T20:41:12.396Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 3
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$.eDX/tRydSuagunB5vzaIO0mTT/MhLgh4DVtZLqdvKNrp5PGEHOTi",
+      "expires_at": "2025-11-01T20:41:23.048Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 4
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$wCcKbr8jVAhwS.giboPt9uHCvjeSiIpm7m6pdPi9TuWocq37E2i7G",
+      "expires_at": "2025-11-01T20:41:34.010Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 5
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$Z.NJYKegE543WOJLGq/0Ie6VAzWCp2EG/e7Ve/x2bwbA3ubidHLuW",
+      "expires_at": "2025-11-01T20:43:42.399Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "id": 6
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$uoQAzM7a6oBdvgtr43f0LeIye7Uza9XyYXfU3pmobizwl3a5l1MPm",
+      "expires_at": "2025-11-01T20:45:05.062Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 7
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$iH2CT79MbwCXmak77pMfm./SrSA4EBw5.3SBr9lXBISi6JJ.FxeXS",
+      "expires_at": "2025-11-01T20:49:30.023Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 8
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$l8.PQ2X4vkEuOSQxuZmPwONr/9SawKLl6qC7V7g6QY2kD5.WNZDsG",
+      "expires_at": "2025-11-01T20:50:04.489Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 9
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$BGEQ/xMFvmSlNGZ.TmYghOFPhBSwXT660Zmj3UeOa69oCNV.0kKGS",
+      "expires_at": "2025-11-01T20:50:42.079Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 10
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$iezxP7V4n/zGWVnb6TLFCO2b/dvczWSYerE8G1LiZuXgMcE6qe0cm",
+      "expires_at": "2025-11-01T20:53:03.888Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 11
+    },
+    {
+      "user_id": 1,
+      "token_hash": "$2a$12$pMbXYbwCDYuvbjIH/I.zQep7pibrhjmFrhsSoPGtNmLDs8f7YRgoO",
+      "expires_at": "2025-11-01T20:54:24.687Z",
+      "ip_address": "172.20.0.1",
+      "user_agent": "curl/8.16.0",
+      "id": 12
+    }
+  ]
+}

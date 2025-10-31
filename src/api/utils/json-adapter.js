@@ -116,7 +116,11 @@ class JSONAdapter {
             const tableMatch = sql.match(/FROM\s+(\w+)/i);
             if (!tableMatch) return [{ total: 0 }];
             
-            const tableName = tableMatch[1].toLowerCase();
+            let tableName = tableMatch[1].toLowerCase();
+            // Map user_sessions to sessions for JSON adapter
+            if (tableName === 'user_sessions') {
+                tableName = 'sessions';
+            }
             let data = this.data[tableName] || [];
             
             // Apply WHERE conditions for COUNT
@@ -133,7 +137,11 @@ class JSONAdapter {
         const tableMatch = sql.match(/FROM\s+(\w+)/i);
         if (!tableMatch) return [];
         
-        const tableName = tableMatch[1].toLowerCase();
+        let tableName = tableMatch[1].toLowerCase();
+        // Map user_sessions to sessions for JSON adapter
+        if (tableName === 'user_sessions') {
+            tableName = 'sessions';
+        }
         let data = this.data[tableName] || [];
         
         // Apply WHERE conditions (basic implementation)
@@ -164,7 +172,11 @@ class JSONAdapter {
         const tableMatch = sql.match(/INSERT\s+INTO\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
-        const tableName = tableMatch[1].toLowerCase();
+        let tableName = tableMatch[1].toLowerCase();
+        // Map user_sessions to sessions for JSON adapter
+        if (tableName === 'user_sessions') {
+            tableName = 'sessions';
+        }
         if (!this.data[tableName]) {
             this.data[tableName] = [];
         }
@@ -202,7 +214,11 @@ class JSONAdapter {
         const tableMatch = sql.match(/UPDATE\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
-        const tableName = tableMatch[1].toLowerCase();
+        let tableName = tableMatch[1].toLowerCase();
+        // Map user_sessions to sessions for JSON adapter
+        if (tableName === 'user_sessions') {
+            tableName = 'sessions';
+        }
         let data = this.data[tableName] || [];
         
         // Apply WHERE conditions
@@ -238,7 +254,11 @@ class JSONAdapter {
         const tableMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
         if (!tableMatch) return { affectedRows: 0 };
         
-        const tableName = tableMatch[1].toLowerCase();
+        let tableName = tableMatch[1].toLowerCase();
+        // Map user_sessions to sessions for JSON adapter
+        if (tableName === 'user_sessions') {
+            tableName = 'sessions';
+        }
         let data = this.data[tableName] || [];
         
         // Apply WHERE conditions
@@ -275,12 +295,40 @@ class JSONAdapter {
             return orConditions.some(orCondition => {
                 const andConditions = orCondition.split('AND').map(c => c.trim());
                 return andConditions.every(andCondition => {
+                    // Handle equality conditions
                     const match = andCondition.match(/(\w+)\s*=\s*\?/i);
                     if (match && params.length > 0) {
                         const column = match[1];
                         const paramIndex = this.getParamIndex(whereClause, andCondition);
                         return record[column] == params[paramIndex]; // Use == for loose comparison
                     }
+                    
+                    // Handle greater than conditions (for expires_at > NOW())
+                    const greaterMatch = andCondition.match(/(\w+)\s*>\s*NOW\(\)/i);
+                    if (greaterMatch) {
+                        const column = greaterMatch[1];
+                        const recordValue = record[column];
+                        if (recordValue) {
+                            const expiresTime = new Date(recordValue).getTime();
+                            const nowTime = Date.now();
+                            return expiresTime > nowTime;
+                        }
+                        return false;
+                    }
+                    
+                    // Handle boolean conditions (is_active = TRUE)
+                    const booleanMatch = andCondition.match(/(\w+)\s*=\s*(TRUE|FALSE)/i);
+                    if (booleanMatch) {
+                        const column = booleanMatch[1];
+                        const expectedValue = booleanMatch[2].toUpperCase() === 'TRUE';
+                        const recordValue = record[column];
+                        // If field doesn't exist, default to TRUE for is_active
+                        if (recordValue === undefined && column === 'is_active') {
+                            return expectedValue; // Assume active if not set
+                        }
+                        return recordValue === expectedValue;
+                    }
+                    
                     return true; // If we can't parse, include it
                 });
             });
