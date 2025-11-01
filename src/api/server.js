@@ -448,7 +448,7 @@ app.get('/api/health', async (req, res) => {
 app.post('/api/admin/cache', [
     authenticateToken,
     requireAdmin,
-    commonValidations.maintenanceOperation,
+    commonValidations.cacheOperation,
     handleValidationErrors
 ], async (req, res) => {
     try {

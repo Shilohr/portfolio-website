@@ -371,7 +371,7 @@ router.post('/logout', async (req, res) => {
         if (decoded.jti) {
             // New fast method using jti
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE',
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE AND expires_at > NOW()',
                 [decoded.userId, decoded.jti]
             );
             
@@ -384,7 +384,7 @@ router.post('/logout', async (req, res) => {
         } else {
             // Fallback for old tokens - use the old expensive method
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE AND expires_at > NOW()',
                 [decoded.userId]
             );
 
@@ -401,7 +401,7 @@ router.post('/logout', async (req, res) => {
         // Invalidate the matching session
         if (sessionToInvalidate) {
             await db.execute(
-                'UPDATE user_sessions SET is_active = FALSE WHERE id = ?',
+                'UPDATE user_sessions SET is_active = FALSE, expires_at = NOW() WHERE id = ?',
                 [sessionToInvalidate.id]
             );
         }
@@ -469,7 +469,7 @@ const authenticateToken = (req, res, next) => {
             try {
                 const db = req.db;
                 const [sessions] = await db.execute(
-                    'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
+                    'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE AND expires_at > NOW()',
                     [decoded.userId]
                 );
 
@@ -491,7 +491,26 @@ const authenticateToken = (req, res, next) => {
                     return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
                 }
 
-                req.user = decoded;
+                // Revalidate user status to prevent disabled user bypass
+                const [users] = await db.execute(
+                    'SELECT is_active, role FROM users WHERE id = ?',
+                    [decoded.userId]
+                );
+
+                if (users.length === 0) {
+                    return sendError(res, 'FORBIDDEN', 'User not found');
+                }
+
+                const currentUser = users[0];
+                if (!currentUser.is_active) {
+                    return sendError(res, 'FORBIDDEN', 'Account is deactivated');
+                }
+
+                // Update user object with current role
+                req.user = {
+                    ...decoded,
+                    role: currentUser.role
+                };
                 next();
             } catch (error) {
                 logger.error('Token validation failed (fallback)', req, { 
@@ -506,7 +525,7 @@ const authenticateToken = (req, res, next) => {
         try {
             const db = req.db;
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE',
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE AND expires_at > NOW()',
                 [decoded.userId, decoded.jti]
             );
 
@@ -523,7 +542,26 @@ const authenticateToken = (req, res, next) => {
                 return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
             }
 
-            req.user = decoded;
+            // Revalidate user status to prevent disabled user bypass
+            const [users] = await db.execute(
+                'SELECT is_active, role FROM users WHERE id = ?',
+                [decoded.userId]
+            );
+
+            if (users.length === 0) {
+                return sendError(res, 'FORBIDDEN', 'User not found');
+            }
+
+            const currentUser = users[0];
+            if (!currentUser.is_active) {
+                return sendError(res, 'FORBIDDEN', 'Account is deactivated');
+            }
+
+            // Update user object with current role
+            req.user = {
+                ...decoded,
+                role: currentUser.role
+            };
             req.sessionId = session.id;
             next();
         } catch (error) {

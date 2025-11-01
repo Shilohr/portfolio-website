@@ -132,6 +132,11 @@ const commonValidations = {
         .isIn(['cleanup-sessions', 'optimize-tables', 'create-partition', 'drop-old-partitions', 'metrics'])
         .withMessage('Invalid operation'),
     
+    // Admin cache management validations
+    cacheOperation: body('operation')
+        .isIn(['clear', 'invalidate', 'stats'])
+        .withMessage('Invalid cache operation'),
+    
     year: body('year')
         .optional()
         .isInt({ min: new Date().getFullYear(), max: new Date().getFullYear() + 10 })
