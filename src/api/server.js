@@ -765,6 +765,20 @@ async function serveHtmlWithCSRF(req, res, htmlFile) {
             `<meta name="csp-nonce" id="csp-nonce" content="${nonce}">`
         );
         
+        // Inject nonce into all inline script tags
+        // This handles both regular scripts and JSON-LD structured data
+        html = html.replace(
+            /<script(?![^>]*src)([^>]*)>/g,
+            (match, attributes) => {
+                // Check if nonce attribute already exists
+                if (attributes.includes('nonce=')) {
+                    return match;
+                }
+                // Add nonce attribute
+                return `<script nonce="${nonce}"${attributes}>`;
+            }
+        );
+        
         res.send(html);
     } catch (error) {
         logger.error(`Failed to serve ${htmlFile}`, req, { error: error.message });

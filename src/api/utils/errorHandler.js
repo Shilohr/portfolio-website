@@ -82,6 +82,26 @@ const ERROR_RESPONSES = {
         message: 'External service unavailable',
         statusCode: 502,
         code: 'EXTERNAL_API_ERROR'
+    },
+    DEBUG_ERROR: {
+        message: 'Debug operation failed',
+        statusCode: 500,
+        code: 'DEBUG_ERROR'
+    },
+    CONFIG_ERROR: {
+        message: 'Configuration error',
+        statusCode: 500,
+        code: 'CONFIG_ERROR'
+    },
+    TIMEOUT: {
+        message: 'Request timeout',
+        statusCode: 408,
+        code: 'TIMEOUT'
+    },
+    INTERNAL_ERROR: {
+        message: 'Internal server error',
+        statusCode: 500,
+        code: 'INTERNAL_ERROR'
     }
 };
 

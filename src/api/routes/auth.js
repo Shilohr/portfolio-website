@@ -132,8 +132,20 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
             );
 
             // Handle both MySQL-compatible tuples and JSON adapter return shape
-            const insertResult = Array.isArray(userResult) ? userResult[0] : userResult;
-            const insertId = insertResult.insertId;
+            let insertId;
+            
+            if (Array.isArray(userResult)) {
+                // MySQL adapter returns [rows, metadata] where metadata has insertId
+                insertId = userResult[0]?.insertId || userResult[1]?.insertId;
+            } else if (userResult && typeof userResult === 'object') {
+                // JSON adapter might return { insertId: ... } or { id: ... } or { lastID: ... }
+                insertId = userResult.insertId || userResult.id || userResult.lastID;
+            }
+            
+            // Validate that we have a valid insertId
+            if (insertId === undefined || insertId === null) {
+                throw new Error('Failed to retrieve user ID after insertion - database adapter returned invalid result');
+            }
 
             // Log registration
             await connection.execute(
@@ -261,15 +273,15 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
             
             // Reset login attempts on successful login
             await connection.execute(
-                'UPDATE users SET login_attempts = 0, locked_until = NULL, last_login = CURRENT_TIMESTAMP WHERE id = ?',
-                [user.id]
+                'UPDATE users SET login_attempts = 0, locked_until = NULL, last_login = ? WHERE id = ?',
+                [new Date(), user.id]
             );
 
             // Generate JWT token with jti
             const { token, jti } = generateToken(user.id, user.username, user.role);
 
             // Store session in database with jti for fast lookup
-            const tokenHash = await hashPassword(token);
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
             await connection.execute(
                 'INSERT INTO user_sessions (user_id, token_hash, jti, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)',
                 [user.id, tokenHash, jti, new Date(Date.now() + 24 * 60 * 60 * 1000), req.ip, req.get('User-Agent')]
@@ -375,12 +387,13 @@ router.post('/logout', async (req, res) => {
         if (decoded.jti) {
             // New fast method using jti
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE AND expires_at > NOW()',
-                [decoded.userId, decoded.jti]
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = 1 AND expires_at > ?',
+                [decoded.userId, decoded.jti, new Date()]
             );
             
             if (sessions.length > 0) {
-                const isValid = await comparePassword(token, sessions[0].token_hash);
+                const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+                const isValid = timingSafeEqual(tokenHash, sessions[0].token_hash);
                 if (isValid) {
                     sessionToInvalidate = sessions[0];
                 }
@@ -388,13 +401,14 @@ router.post('/logout', async (req, res) => {
         } else {
             // Fallback for old tokens - use the old expensive method
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE AND expires_at > NOW()',
-                [decoded.userId]
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = 1 AND expires_at > ?',
+                [decoded.userId, new Date()]
             );
 
             // Find the session that matches our token
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
             for (const session of sessions) {
-                const isValid = await comparePassword(token, session.token_hash);
+                const isValid = timingSafeEqual(tokenHash, session.token_hash);
                 if (isValid) {
                     sessionToInvalidate = session;
                     break;
@@ -405,8 +419,8 @@ router.post('/logout', async (req, res) => {
         // Invalidate the matching session
         if (sessionToInvalidate) {
             await db.execute(
-                'UPDATE user_sessions SET is_active = FALSE, expires_at = NOW() WHERE id = ?',
-                [sessionToInvalidate.id]
+                'UPDATE user_sessions SET is_active = 0, expires_at = ? WHERE id = ?',
+                [new Date(), sessionToInvalidate.id]
             );
         }
 
@@ -473,8 +487,8 @@ const authenticateToken = (req, res, next) => {
             try {
                 const db = req.db;
                 const [sessions] = await db.execute(
-                    'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE AND expires_at > NOW()',
-                    [decoded.userId]
+                    'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = 1 AND expires_at > ?',
+                    [decoded.userId, new Date()]
                 );
 
                 if (sessions.length === 0) {
@@ -483,8 +497,9 @@ const authenticateToken = (req, res, next) => {
 
                 // Verify token hash against stored hash
                 let validSession = null;
+                const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
                 for (const session of sessions) {
-                    const isValid = await comparePassword(token, session.token_hash);
+                    const isValid = timingSafeEqual(tokenHash, session.token_hash);
                     if (isValid) {
                         validSession = session;
                         break;
@@ -529,8 +544,8 @@ const authenticateToken = (req, res, next) => {
         try {
             const db = req.db;
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE AND expires_at > NOW()',
-                [decoded.userId, decoded.jti]
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = 1 AND expires_at > ?',
+                [decoded.userId, decoded.jti, new Date()]
             );
 
             if (sessions.length === 0) {
@@ -540,7 +555,8 @@ const authenticateToken = (req, res, next) => {
             const session = sessions[0];
 
             // Verify token against stored hash
-            const isValid = await comparePassword(token, session.token_hash);
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+            const isValid = timingSafeEqual(tokenHash, session.token_hash);
 
             if (!isValid) {
                 return sendError(res, 'FORBIDDEN', 'Session expired or invalid');

@@ -104,6 +104,7 @@ invalidUrls.forEach(url => {
                     expect(githubUrlRegex.test(url)).toBe(false);
                 });
             });
+        });
 
         describe('Rate Limiting Logic', () => {
             test('should calculate rate limit reset time correctly', () => {
@@ -310,7 +311,7 @@ invalidUrls.forEach(url => {
             });
         });
 
-  describe('GET /api/github/repos', () => {
+        describe('GET /api/github/repos', () => {
             test('should get cached repositories successfully', async () => {
                 const mockRepos = [
                     TestHelpers.createTestGitHubRepoData({ id: 1, name: 'repo-1' }),
@@ -430,9 +431,9 @@ invalidUrls.forEach(url => {
         });
     });
 
-describe('Security Tests', () => {
+    describe('Security Tests', () => {
         describe('Input Validation', () => {
-test('should prevent SQL injection in repository ID', async () => {
+            test('should prevent SQL injection in repository ID', async () => {
                 const maliciousId = "123456'; DROP TABLE github_repos; --";
 
                 mockDb.execute.mockResolvedValueOnce([[]]); // No repo found
@@ -443,7 +444,7 @@ test('should prevent SQL injection in repository ID', async () => {
                 TestHelpers.validateErrorResponse(response, 400, 'Repository ID contains invalid characters');
             });
 
-test('should prevent SQL injection in query parameters', async () => {
+            test('should prevent SQL injection in query parameters', async () => {
                 const maliciousLanguage = "JavaScript"; // Valid language name
 
                 mockDb.execute
@@ -457,7 +458,7 @@ test('should prevent SQL injection in query parameters', async () => {
                 expect(response.status).toBe(200);
             });
 
-test('should validate sort parameter values', async () => {
+            test('should validate sort parameter values', async () => {
                 const invalidSorts = ['invalid', 'malicious', 'hack'];
 
                 for (const sort of invalidSorts) {
@@ -686,8 +687,8 @@ test('should validate sort parameter values', async () => {
 
         test('should handle invalid pagination parameters', async () => {
 mockDb.execute
-                    .mockResolvedValueOnce([[]])
-                    .mockResolvedValueOnce([[{ total: 0 }]]);
+                .mockResolvedValueOnce([[]])
+                .mockResolvedValueOnce([[{ total: 0 }]]);
 
             const response = await request(app)
                 .get('/api/github/repos?page=-1&limit=0');
@@ -696,9 +697,8 @@ mockDb.execute
             expect(response.status).toBe(200);
         });
     });
-});
 
-  describe('Repository Tests', () => {
+    describe('Repository Tests', () => {
     it('should get repository by ID', async () => {
       const mockRepo = TestHelpers.createTestGitHubRepoData({ repo_id: '123456', name: 'test-repo' });
       mockDb.execute.mockResolvedValue([[mockRepo]]);
@@ -749,7 +749,7 @@ mockDb.execute
     });
   });
 
-  describe('Security Edge Cases', () => {
+    describe('Security Edge Cases', () => {
     it('should handle SQL injection attempts in repository queries', async () => {
       const maliciousId = "1; DROP TABLE github_repos; --";
 

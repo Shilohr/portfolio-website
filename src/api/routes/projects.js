@@ -45,15 +45,20 @@ const checkProjectOwnership = [customValidations.validateProjectId, async (req, 
             // Fallback for JSON adapter
             logger.warn('Using fallback query for ownership check (JSON adapter)', req, { error: error.message });
             
-            [projects] = await db.execute(`
-                SELECT p.*, u.role as user_role 
-                FROM projects p 
-                LEFT JOIN users u ON p.user_id = u.id 
-                WHERE p.id = ?
-            `, [id]);
+            try {
+                [projects] = await db.execute(`
+                    SELECT p.*, u.role as user_role 
+                    FROM projects p 
+                    LEFT JOIN users u ON p.user_id = u.id 
+                    WHERE p.id = ?
+                `, [id]);
+            } catch (fallbackError) {
+                logger.error('Ownership fallback query also failed', req, { error: fallbackError.message });
+                projects = [];
+            }
         }
         
-        if (projects.length === 0) {
+        if (!Array.isArray(projects) || projects.length === 0) {
             return sendError(res, 'NOT_FOUND', 'Project not found');
         }
         
@@ -152,44 +157,59 @@ router.get('/', [
                 LIMIT ? OFFSET ?
             `, [...params, limitNum, offset]);
 
-            totalCount = projects.length > 0 ? [{ total: projects[0].total_count }] : [{ total: 0 }];
+            totalCount = (Array.isArray(projects) && projects.length > 0 && projects[0].total_count !== undefined) ? [{ total: projects[0].total_count }] : [{ total: 0 }];
         } catch (error) {
             // Fallback for JSON adapter - simplified query without window functions/GROUP_CONCAT
             logger.warn('Using fallback query for JSON adapter compatibility', req, { error: error.message });
             
             // Get basic projects without complex SQL features
-            [projects] = await db.execute(`
-                SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
-                       p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
-                       u.username as owner_username
-                FROM projects p
-                LEFT JOIN users u ON p.user_id = u.id
-                ${whereClause}
-                ORDER BY p.order_index ASC, p.created_at DESC
-                LIMIT ? OFFSET ?
-            `, [...params, limitNum, offset]);
+            try {
+                [projects] = await db.execute(`
+                    SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
+                           p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
+                           u.username as owner_username
+                    FROM projects p
+                    LEFT JOIN users u ON p.user_id = u.id
+                    ${whereClause}
+                    ORDER BY p.order_index ASC, p.created_at DESC
+                    LIMIT ? OFFSET ?
+                `, [...params, limitNum, offset]);
+            } catch (fallbackError) {
+                logger.error('Fallback query also failed', req, { error: fallbackError.message });
+                projects = [];
+            }
 
             // Get total count separately
-            [totalCount] = await db.execute(`
-                SELECT COUNT(*) as total
-                FROM projects p
-                ${whereClause}
-            `, params);
+            try {
+                [totalCount] = await db.execute(`
+                    SELECT COUNT(*) as total
+                    FROM projects p
+                    ${whereClause}
+                `, params);
+            } catch (countError) {
+                logger.error('Count query failed', req, { error: countError.message });
+                totalCount = [{ total: 0 }];
+            }
 
             // Get technologies for each project separately
-            for (const project of projects) {
-                const [techRows] = await db.execute(`
-                    SELECT technology
-                    FROM project_technologies
-                    WHERE project_id = ?
-                    ORDER BY technology
-                `, [project.id]);
-                project.technologies = techRows.map(row => row.technology).join(',');
+            if (Array.isArray(projects)) {
+                for (const project of projects) {
+                    const [techRows] = await db.execute(`
+                        SELECT technology
+                        FROM project_technologies
+                        WHERE project_id = ?
+                        ORDER BY technology
+                    `, [project.id]);
+                    project.technologies = techRows.map(row => row.technology).join(',');
+                }
+            } else {
+                // If projects is not an array, set it to empty array to prevent crashes
+                projects = [];
             }
         }
 
         // Parse technologies and remove total_count from response
-        const projectsWithTech = projects.map(project => {
+        const projectsWithTech = Array.isArray(projects) ? projects.map(project => {
             const { total_count, ...projectData } = project;
             // Sanitize technology strings by trimming and filtering empty values
             const technologies = project.technologies 
@@ -199,7 +219,7 @@ router.get('/', [
                 ...projectData,
                 technologies
             };
-        });
+        }) : [];
 
         // Ensure total_count is properly handled for both SQL and JSON adapter modes
         // The totalCount variable already contains the correct total count from above
@@ -209,8 +229,8 @@ router.get('/', [
             pagination: {
                 page: pageNum,
                 limit: limitNum,
-                total: totalCount[0].total,
-                pages: Math.ceil(totalCount[0].total / limitNum)
+                total: (Array.isArray(totalCount) && totalCount.length > 0) ? totalCount[0].total : 0,
+                pages: (Array.isArray(totalCount) && totalCount.length > 0) ? Math.ceil(totalCount[0].total / limitNum) : 0
             }
         }, 'Projects fetched successfully');
 
@@ -252,20 +272,25 @@ router.get('/:id', [
             // Fallback for JSON adapter
             logger.warn('Using fallback query for single project (JSON adapter)', req, { error: error.message });
             
-            [projects] = await db.execute(`
-                SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
-                       p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
-                       u.username as owner_username,
-                       GROUP_CONCAT(DISTINCT pt.technology ORDER BY pt.technology) as technologies
-                FROM projects p
-                LEFT JOIN project_technologies pt ON p.id = pt.project_id
-                LEFT JOIN users u ON p.user_id = u.id
-                WHERE p.id = ? AND p.status = 'active'
-                GROUP BY p.id, u.username
-            `, [id]);
+            try {
+                [projects] = await db.execute(`
+                    SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
+                           p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
+                           u.username as owner_username,
+                           GROUP_CONCAT(DISTINCT pt.technology ORDER BY pt.technology) as technologies
+                    FROM projects p
+                    LEFT JOIN project_technologies pt ON p.id = pt.project_id
+                    LEFT JOIN users u ON p.user_id = u.id
+                    WHERE p.id = ? AND p.status = 'active'
+                    GROUP BY p.id, u.username
+                `, [id]);
+            } catch (fallbackError) {
+                logger.error('Single project fallback query also failed', req, { error: fallbackError.message });
+                projects = [];
+            }
         }
 
-        if (projects.length === 0) {
+        if (!Array.isArray(projects) || projects.length === 0) {
             return sendError(res, 'NOT_FOUND', 'Project not found');
         }
 
