@@ -135,7 +135,12 @@ export async function initializeCSRFProtection() {
         }
         
         const data = await response.json();
-        window.csrfToken = data.data.csrfToken;
+        
+        if (!data.csrfToken) {
+            throw new Error('CSRF token not found in response');
+        }
+        
+        window.csrfToken = data.csrfToken;
         
         console.log('CSRF protection initialized successfully');
         
@@ -144,8 +149,8 @@ export async function initializeCSRFProtection() {
         
     } catch (error) {
         console.error('Failed to initialize CSRF protection:', error);
-        // Don't throw error - let the application continue without CSRF
-        console.warn('Continuing without CSRF protection - some features may not work properly');
+        showErrorMessage('Security initialization failed. Please refresh the page.');
+        throw new Error('CSRF protection initialization failed');
     }
 }
 
@@ -166,12 +171,19 @@ async function refreshCSRFToken() {
         }
         
         const data = await response.json();
-        window.csrfToken = data.data.csrfToken;
+        
+        if (!data.csrfToken) {
+            throw new Error('CSRF token not found in response');
+        }
+        
+        window.csrfToken = data.csrfToken;
         
         console.log('CSRF token refreshed successfully');
         
     } catch (error) {
         console.error('Failed to refresh CSRF token:', error);
+        showErrorMessage('Security token refresh failed. Please refresh the page.');
+        throw new Error('CSRF token refresh failed');
     }
 }
 

@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { createPool } = require('./utils/json-adapter');
+// Database adapters will be imported conditionally based on DB_TYPE
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -205,10 +205,73 @@ app.use('/api/auth/logout', csrfProtection);
 app.use('/api/admin/cache', csrfProtection);
 app.use('/api/admin/maintenance', csrfProtection);
 
-// SQLite database connection
-const pool = createPool({
-    database: process.env.DB_PATH || 'portfolio.json'
-});
+// Database connection - branch based on DB_TYPE configuration
+let pool;
+try {
+    switch (config.DB_TYPE) {
+        case 'mysql':
+            const mysql = require('mysql2/promise');
+            pool = mysql.createPool({
+                host: config.DB_HOST,
+                user: config.DB_USER,
+                password: config.DB_PASSWORD,
+                database: config.DB_NAME,
+                connectionLimit: 10,
+                acquireTimeout: 60000,
+                timeout: 60000,
+                reconnect: true,
+                charset: 'utf8mb4'
+            });
+            logger.info('MySQL database pool initialized', null, {
+                host: config.DB_HOST,
+                database: config.DB_NAME,
+                user: config.DB_USER
+            });
+            break;
+            
+        case 'sqlite':
+            const { createPool: createSQLitePool } = require('./utils/sqlite-adapter');
+            pool = createSQLitePool({
+                database: process.env.DB_PATH || 'portfolio.db'
+            });
+            logger.info('SQLite database pool initialized', null, {
+                database: process.env.DB_PATH || 'portfolio.db'
+            });
+            break;
+            
+        case 'json':
+        default:
+            const { createPool: createJSONPool } = require('./utils/json-adapter');
+            pool = createJSONPool({
+                database: process.env.DB_PATH || 'portfolio.json'
+            });
+            logger.info('JSON database pool initialized', null, {
+                database: process.env.DB_PATH || 'portfolio.json',
+                fallback: config.DB_TYPE !== 'json' ? 'fallback adapter' : 'configured adapter'
+            });
+            break;
+    }
+} catch (error) {
+    logger.error('Database initialization failed', error, {
+        dbType: config.DB_TYPE,
+        nodeEnv: config.NODE_ENV
+    });
+    
+    // In development/test, fall back to JSON adapter if primary adapter fails
+    if (config.NODE_ENV === 'development' || config.NODE_ENV === 'test') {
+        logger.warn('Falling back to JSON adapter due to initialization error', null, {
+            originalDbType: config.DB_TYPE,
+            error: error.message
+        });
+        const { createPool: createJSONPool } = require('./utils/json-adapter');
+        pool = createJSONPool({
+            database: process.env.DB_PATH || 'portfolio.json'
+        });
+    } else {
+        // In production, fail fast if database initialization fails
+        throw new Error(`Database initialization failed for ${config.DB_TYPE}: ${error.message}`);
+    }
+}
 
 // Database connection pool monitoring
 pool.on('connection', (connection) => {
@@ -242,35 +305,54 @@ pool.on('enqueue', () => {
     });
 });
 
-// Initialize database maintenance
-const dbMaintenance = new DatabaseMaintenance(pool);
+// Initialize database maintenance (only for MySQL/SQLite databases)
+let dbMaintenance = null;
+if (config.DB_TYPE === 'mysql' || config.DB_TYPE === 'sqlite') {
+    try {
+        dbMaintenance = new DatabaseMaintenance(pool);
+        logger.info('Database maintenance initialized', null, { dbType: config.DB_TYPE });
+    } catch (error) {
+        logger.warn('Database maintenance initialization failed', error, { 
+            dbType: config.DB_TYPE,
+            error: error.message 
+        });
+        // Continue without maintenance - non-critical for basic operation
+    }
+} else {
+    logger.info('Database maintenance skipped', null, { 
+        reason: 'JSON adapter does not require maintenance',
+        dbType: config.DB_TYPE 
+    });
+}
 
 // Periodic pool health monitoring (only for MySQL pools)
-setInterval(() => {
-    // Only monitor pool stats if MySQL-specific properties are available
-    if (pool._allConnections && pool._freeConnections && pool._connectionQueue) {
-        const poolStats = {
-            totalConnections: pool._allConnections.length,
-            freeConnections: pool._freeConnections.length,
-            queuedRequests: pool._connectionQueue.length,
-            connectionLimit: pool.config?.connectionLimit || 'unknown',
-            timestamp: new Date().toISOString()
-        };
-        
-        logger.info('Database pool health check', null, poolStats);
-        
-        // Alert if pool is under stress
-        if (poolStats.queuedRequests > 0) {
-            logger.warn('Database pool under stress', null, {
-                ...poolStats,
-                alert: 'High queue length detected'
-            });
+if (config.DB_TYPE === 'mysql') {
+    setInterval(() => {
+        // Only monitor pool stats if MySQL-specific properties are available
+        if (pool._allConnections && pool._freeConnections && pool._connectionQueue) {
+            const poolStats = {
+                totalConnections: pool._allConnections.length,
+                freeConnections: pool._freeConnections.length,
+                queuedRequests: pool._connectionQueue.length,
+                connectionLimit: pool.config?.connectionLimit || 'unknown',
+                timestamp: new Date().toISOString()
+            };
+            
+            logger.info('MySQL pool health check', null, poolStats);
+            
+            // Alert if pool is under stress
+            if (poolStats.queuedRequests > 0) {
+                logger.warn('MySQL pool under stress', null, {
+                    ...poolStats,
+                    alert: 'High queue length detected'
+                });
+            }
         }
-    }
-}, 300000); // Check every 5 minutes
+    }, 300000); // Check every 5 minutes
+}
 
-// Scheduled database maintenance tasks
-if (config.NODE_ENV === 'production') {
+// Scheduled database maintenance tasks (only for MySQL/SQLite databases)
+if (config.NODE_ENV === 'production' && dbMaintenance) {
     // Daily cleanup of expired sessions (runs at 2 AM)
     setInterval(async () => {
         const now = new Date();
@@ -278,52 +360,62 @@ if (config.NODE_ENV === 'production') {
             try {
                 await dbMaintenance.cleanupExpiredSessions();
                 logger.info('Daily session cleanup completed', null, { 
-                    timestamp: now.toISOString() 
+                    timestamp: now.toISOString(),
+                    dbType: config.DB_TYPE
                 });
             } catch (error) {
                 logger.error('Daily session cleanup failed', null, { 
-                    error: error.message 
+                    error: error.message,
+                    dbType: config.DB_TYPE
                 });
             }
         }
     }, 60000); // Check every minute
 
-    // Weekly table optimization (runs on Sunday at 3 AM)
-    setInterval(async () => {
-        const now = new Date();
-        if (now.getDay() === 0 && now.getHours() === 3 && now.getMinutes() === 0) {
-            try {
-                await dbMaintenance.optimizeTables();
-                logger.info('Weekly table optimization completed', null, { 
-                    timestamp: now.toISOString() 
-                });
-            } catch (error) {
-                logger.error('Weekly table optimization failed', null, { 
-                    error: error.message 
-                });
+    // Weekly table optimization (runs on Sunday at 3 AM) - MySQL only
+    if (config.DB_TYPE === 'mysql') {
+        setInterval(async () => {
+            const now = new Date();
+            if (now.getDay() === 0 && now.getHours() === 3 && now.getMinutes() === 0) {
+                try {
+                    await dbMaintenance.optimizeTables();
+                    logger.info('Weekly table optimization completed', null, { 
+                        timestamp: now.toISOString(),
+                        dbType: config.DB_TYPE
+                    });
+                } catch (error) {
+                    logger.error('Weekly table optimization failed', null, { 
+                        error: error.message,
+                        dbType: config.DB_TYPE
+                    });
+                }
             }
-        }
-    }, 60000); // Check every minute
+        }, 60000); // Check every minute
+    }
 
-    // Monthly partition management (runs on 1st of month at 4 AM)
-    setInterval(async () => {
-        const now = new Date();
-        if (now.getDate() === 1 && now.getHours() === 4 && now.getMinutes() === 0) {
-            try {
-                const currentYear = now.getFullYear();
-                await dbMaintenance.createAuditLogPartition(currentYear + 1);
-                await dbMaintenance.dropOldPartitions();
-                logger.info('Monthly partition management completed', null, { 
-                    timestamp: now.toISOString(),
-                    year: currentYear
-                });
-            } catch (error) {
-                logger.error('Monthly partition management failed', null, { 
-                    error: error.message 
-                });
+    // Monthly partition management (runs on 1st of month at 4 AM) - MySQL only
+    if (config.DB_TYPE === 'mysql') {
+        setInterval(async () => {
+            const now = new Date();
+            if (now.getDate() === 1 && now.getHours() === 4 && now.getMinutes() === 0) {
+                try {
+                    const currentYear = now.getFullYear();
+                    await dbMaintenance.createAuditLogPartition(currentYear + 1);
+                    await dbMaintenance.dropOldPartitions();
+                    logger.info('Monthly partition management completed', null, { 
+                        timestamp: now.toISOString(),
+                        year: currentYear,
+                        dbType: config.DB_TYPE
+                    });
+                } catch (error) {
+                    logger.error('Monthly partition management failed', null, { 
+                        error: error.message,
+                        dbType: config.DB_TYPE
+                    });
+                }
             }
-        }
-    }, 60000); // Check every minute
+        }, 60000); // Check every minute
+    }
 }
 
 // Make database available to routes with performance monitoring
@@ -388,23 +480,37 @@ app.get('/api/health', async (req, res) => {
         const dbTest = await pool.query('SELECT 1 as test');
         
         // Get comprehensive pool statistics for monitoring
-        // Handle both MySQL pools and JSON adapter pools
+        // Handle different database pool types
         let poolStats;
-        if (pool._allConnections) {
-            // MySQL-style pool
-            poolStats = {
-                totalConnections: pool._allConnections.length,
-                freeConnections: pool._freeConnections.length,
-                queuedRequests: pool._connectionQueue.length,
-                connectionLimit: pool.config.connectionLimit
-            };
-        } else {
-            // JSON adapter pool
-            poolStats = {
-                type: 'JSON Adapter',
-                connected: pool.connected,
-                database: pool.connected ? 'connected' : 'disconnected'
-            };
+        switch (config.DB_TYPE) {
+            case 'mysql':
+                if (pool._allConnections) {
+                    poolStats = {
+                        type: 'MySQL Pool',
+                        totalConnections: pool._allConnections.length,
+                        freeConnections: pool._freeConnections.length,
+                        queuedRequests: pool._connectionQueue.length,
+                        connectionLimit: pool.config.connectionLimit
+                    };
+                } else {
+                    poolStats = { type: 'MySQL Pool', status: 'unknown' };
+                }
+                break;
+            case 'sqlite':
+                poolStats = {
+                    type: 'SQLite Pool',
+                    connected: pool.connected,
+                    database: pool.adapter?.dbPath || 'unknown'
+                };
+                break;
+            case 'json':
+            default:
+                poolStats = {
+                    type: 'JSON Adapter',
+                    connected: pool.connected,
+                    database: pool.sharedAdapter?.dbPath || 'unknown'
+                };
+                break;
         }
         
         // Handle different result formats from different adapters
@@ -537,21 +643,35 @@ app.post('/api/admin/maintenance', [
     try {
         const { operation, year, yearsToKeep } = req.body;
         
+        // Check if maintenance is available for this database type
+        if (!dbMaintenance) {
+            return sendError(res, 'DATABASE_ERROR', `Database maintenance not available for ${config.DB_TYPE} database`);
+        }
+        
         let result;
         switch (operation) {
             case 'cleanup-sessions':
                 result = await dbMaintenance.cleanupExpiredSessions();
                 break;
             case 'optimize-tables':
+                if (config.DB_TYPE !== 'mysql') {
+                    return sendError(res, 'DATABASE_ERROR', 'Table optimization is only available for MySQL databases');
+                }
                 result = await dbMaintenance.optimizeTables();
                 break;
             case 'create-partition':
+                if (config.DB_TYPE !== 'mysql') {
+                    return sendError(res, 'DATABASE_ERROR', 'Partition management is only available for MySQL databases');
+                }
                 {
                     const partitionYear = req.body.year || new Date().getFullYear() + 1;
                     result = await dbMaintenance.createAuditLogPartition(partitionYear);
                 }
                 break;
             case 'drop-old-partitions':
+                if (config.DB_TYPE !== 'mysql') {
+                    return sendError(res, 'DATABASE_ERROR', 'Partition management is only available for MySQL databases');
+                }
                 {
                     const keepYears = req.body.yearsToKeep || 3;
                     result = await dbMaintenance.dropOldPartitions(keepYears);
@@ -560,19 +680,23 @@ app.post('/api/admin/maintenance', [
             case 'metrics':
                 result = await dbMaintenance.getPerformanceMetrics();
                 break;
+            default:
+                return sendError(res, 'VALIDATION_ERROR', 'Invalid maintenance operation');
         }
         
         logger.info('Database maintenance operation completed', req, { 
             operation, 
-            result 
+            result,
+            dbType: config.DB_TYPE
         });
         
-        res.json({ success: true, operation, result });
+        res.json({ success: true, operation, result, dbType: config.DB_TYPE });
         
     } catch (error) {
         logger.error('Database maintenance operation failed', req, { 
             operation: req.body.operation, 
-            error: error.message 
+            error: error.message,
+            dbType: config.DB_TYPE
         });
         sendError(res, 'DATABASE_ERROR', 'Maintenance operation failed');
     }

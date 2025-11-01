@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Configuration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .pass { background-color: #d4edda; color: #155724; }
+        .fail { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>API Configuration Test</h1>
+    <div id="test-results"></div>
+
+    <script type="module">
+        import apiConfig from './js/utils/config.js';
+
+        const results = document.getElementById('test-results');
+
+        function addResult(test, passed, message) {
+            const div = document.createElement('div');
+            div.className = `test-result ${passed ? 'pass' : 'fail'}`;
+            div.innerHTML = `<strong>${test}:</strong> ${message}`;
+            results.appendChild(div);
+        }
+
+        function addInfo(message) {
+            const div = document.createElement('div');
+            div.className = 'test-result info';
+            div.innerHTML = message;
+            results.appendChild(div);
+        }
+
+        // Test 1: Basic API base URL detection
+        const apiBase = apiConfig.apiBase;
+        addResult(
+            'API Base URL Detection', 
+            apiBase && apiBase.length > 0, 
+            `Detected: ${apiBase}`
+        );
+
+        // Test 2: URL construction
+        const testUrl = apiConfig.getApiUrl('/projects');
+        const expectedUrl = `${apiBase}/projects`;
+        addResult(
+            'URL Construction', 
+            testUrl === expectedUrl, 
+            `Expected: ${expectedUrl}, Got: ${testUrl}`
+        );
+
+        // Test 3: Full URL with parameters
+        const fullUrl = apiConfig.getFullUrl('/projects', { page: 1, limit: 10 });
+        const containsParams = fullUrl.includes('page=1') && fullUrl.includes('limit=10');
+        addResult(
+            'Full URL with Parameters', 
+            containsParams, 
+            `Generated: ${fullUrl}`
+        );
+
+        // Test 4: Environment detection
+        addInfo(`Current origin: ${window.location.origin}`);
+        addInfo(`Current hostname: ${window.location.hostname}`);
+        
+        // Test 5: Check if URL is relative (preferred)
+        const isRelative = !apiBase.startsWith('http');
+        addResult(
+            'Relative Path Usage', 
+            isRelative, 
+            isRelative ? '✓ Using relative paths (environment-agnostic)' : '⚠ Using absolute paths'
+        );
+
+        addInfo('✅ Configuration test completed. The API configuration should work in all environments.');
+    </script>
+</body>
+</html>

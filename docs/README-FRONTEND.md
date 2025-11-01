@@ -216,4 +216,33 @@ The frontend is ready for production deployment with the existing nginx configur
 - Fast loading times
 - Lazy loading ready
 
+## 🔧 API Configuration
+
+The frontend uses an environment-agnostic API configuration system located in `src/frontend/js/utils/config.js`. This ensures the same build works across all environments (development, staging, production).
+
+### Features:
+- **Automatic environment detection**: Derives API base URL from `window.location.origin`
+- **Fallback to relative paths**: Uses `/api` as default for maximum compatibility
+- **Flexible configuration options**:
+  - Window variable: `window.API_BASE_URL`
+  - Meta tag: `<meta name="api-base-url" content="/api">`
+  - Environment-specific injection during build
+
+### Usage:
+```javascript
+import apiConfig from './utils/config.js';
+
+// Get API base URL
+const baseUrl = apiConfig.apiBase;
+
+// Construct full URLs
+const projectsUrl = apiConfig.getFullUrl('/projects', { page: 1, limit: 10 });
+```
+
+### Benefits:
+- ✅ No hard-coded localhost URLs
+- ✅ Works in all environments without rebuild
+- ✅ Supports both relative and absolute paths
+- ✅ Easy to override for specific deployments
+
 The frontend is now complete and ready for production use! It provides a stunning, modern retro space-themed experience while maintaining excellent functionality and user experience.

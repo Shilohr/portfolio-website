@@ -4,6 +4,7 @@
 
 // Import security utilities
 import { applyStyleWithNonce } from './utils/security.js';
+import apiConfig from './utils/config.js';
 
 // XSS Protection Utility
 function escapeHtml(unsafe) {
@@ -30,7 +31,7 @@ class ProjectsPage {
             search: ''
         };
         this.pageSize = 12;
-        this.apiBase = 'http://localhost:8080/api';
+        this.apiBase = apiConfig.apiBase;
         this.debounceTimer = null;
         this.init();
     }
@@ -112,7 +113,7 @@ class ProjectsPage {
                 params.append('search', this.filters.search);
             }
 
-            const response = await fetch(`${this.apiBase}/projects?${params}`, { credentials: 'include' });
+            const response = await fetch(apiConfig.getFullUrl('/projects', Object.fromEntries(params)), { credentials: 'include' });
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
