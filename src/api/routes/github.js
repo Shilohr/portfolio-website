@@ -225,7 +225,7 @@ router.post('/sync', [
             }
         }
 
-        const syncedCount = result;
+        
 
         // Log sync activity (handle both authenticated and unauthenticated requests)
         const userId = req.user ? req.user.userId : null;

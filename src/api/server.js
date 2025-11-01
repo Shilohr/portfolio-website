@@ -161,6 +161,8 @@ app.use('/api/auth/register', csrfProtection);
 app.use('/api/projects', csrfTokenMiddleware);
 app.use('/api/github', csrfTokenMiddleware);
 app.use('/api/auth/logout', csrfProtection);
+app.use('/api/admin/cache', csrfProtection);
+app.use('/api/admin/maintenance', csrfProtection);
 
 // SQLite database connection
 const pool = createPool({

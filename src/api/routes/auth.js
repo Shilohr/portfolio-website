@@ -481,10 +481,23 @@ const requireAdmin = (req, res, next) => {
 // Debug route to check current authentication status
 router.get('/debug', authenticateToken, async (req, res) => {
     try {
+        // Filter sensitive headers and cookies to prevent security leaks
+        const filteredHeaders = { ...req.headers };
+        const sensitiveHeaders = ['cookie', 'authorization', 'x-csrf-token', 'x-api-key'];
+        
+        sensitiveHeaders.forEach(header => {
+            delete filteredHeaders[header];
+        });
+        
+        // Filter sensitive cookies
+        const filteredCookies = { ...req.cookies };
+        delete filteredCookies.portfolio_token;
+        delete filteredCookies._csrf;
+
         sendSuccess(res, {
             user: req.user,
-            headers: req.headers,
-            cookies: req.cookies
+            headers: filteredHeaders,
+            cookies: filteredCookies
         }, 'Authentication debug info');
     } catch (error) {
         sendError(res, 'DEBUG_ERROR', 'Failed to get debug info');

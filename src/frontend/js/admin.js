@@ -127,6 +127,14 @@ const utils = {
         return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
     },
 
+    // HTML escaping function to prevent XSS
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
+
     // Debounce function
     debounce(func, wait) {
         let timeout;
@@ -403,23 +411,23 @@ class AdminDashboard {
         const projectsHTML = this.projects.map(project => `
             <div class="admin-project-card glass-card">
                 <div class="project-header">
-                    <h3>${project.title}</h3>
+                    <h3>${utils.escapeHtml(project.title)}</h3>
                     <div class="project-actions">
                         <button class="btn btn-small edit-project" data-id="${project.id}">Edit</button>
                         <button class="btn btn-small btn-danger delete-project" data-id="${project.id}">Delete</button>
                     </div>
                 </div>
-                <p class="project-description">${utils.truncateText(project.description || 'No description', 100)}</p>
+                <p class="project-description">${utils.truncateText(utils.escapeHtml(project.description || 'No description'), 100)}</p>
                 <div class="project-meta">
-                    <span class="status-badge status-${project.status}">${project.status}</span>
+                    <span class="status-badge status-${utils.escapeHtml(project.status)}">${utils.escapeHtml(project.status)}</span>
                     ${project.featured ? '<span class="featured-badge"> Featured</span>' : ''}
                 </div>
                 <div class="project-technologies">
-                    ${project.technologies.slice(0, 3).map(tech => `<span class="tech-tag">${tech}</span>`).join('')}
+                    ${project.technologies.slice(0, 3).map(tech => `<span class="tech-tag">${utils.escapeHtml(tech)}</span>`).join('')}
                 </div>
                 <div class="project-links">
-                    ${project.github_url ? `<a href="${project.github_url}" target="_blank">GitHub</a>` : ''}
-                    ${project.live_url ? `<a href="${project.live_url}" target="_blank">Live</a>` : ''}
+                    ${project.github_url ? `<a href="${utils.escapeHtml(project.github_url)}" target="_blank">GitHub</a>` : ''}
+                    ${project.live_url ? `<a href="${utils.escapeHtml(project.live_url)}" target="_blank">Live</a>` : ''}
                 </div>
                 <div class="project-date">Created: ${utils.formatDate(project.created_at)}</div>
             </div>
@@ -470,14 +478,14 @@ class AdminDashboard {
         const reposHTML = this.githubRepos.map(repo => `
             <div class="github-repo-card glass-card">
                 <div class="repo-header">
-                    <h3>${repo.name}</h3>
-                    <a href="${repo.html_url}" target="_blank" class="btn btn-small">View</a>
+                    <h3>${utils.escapeHtml(repo.name)}</h3>
+                    <a href="${utils.escapeHtml(repo.html_url)}" target="_blank" class="btn btn-small">View</a>
                 </div>
-                <p class="repo-description">${utils.truncateText(repo.description || 'No description', 100)}</p>
+                <p class="repo-description">${utils.truncateText(utils.escapeHtml(repo.description || 'No description'), 100)}</p>
                 <div class="repo-stats">
                     <span class="repo-stat"> ${repo.stars || 0}</span>
                     <span class="repo-stat"> ${repo.forks || 0}</span>
-                    ${repo.language ? `<span class="repo-stat">${repo.language}</span>` : ''}
+                    ${repo.language ? `<span class="repo-stat">${utils.escapeHtml(repo.language)}</span>` : ''}
                 </div>
                 <div class="repo-date">Updated: ${utils.formatDate(repo.updated_at)}</div>
             </div>
