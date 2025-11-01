@@ -12,19 +12,116 @@ function sanitizeParamsForLogging(params) {
         /hash/i,
         /secret/i,
         /key/i,
-        /auth/i
+        /auth/i,
+        /credential/i,
+        /private/i,
+        /bearer/i,
+        /jwt/i,
+        /session/i,
+        /csrf/i,
+        /nonce/i
     ];
     
     return params.map((param, index) => {
         if (typeof param === 'string') {
             // Check if parameter might be sensitive based on common patterns
             const isSensitive = sensitivePatterns.some(pattern => pattern.test(param));
-            if (isSensitive || param.length > 100) {
+            
+            // Check for various sensitive data patterns
+            const looksLikeSecret = 
+                // Base64 encoded data (typically long strings with = padding)
+                /^[A-Za-z0-9+/]{20,}={0,2}$/.test(param) ||
+                // Hex encoded data (long hex strings)
+                /^[a-fA-F0-9]{32,}$/.test(param) ||
+                // JWT tokens (three parts separated by dots)
+                /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(param) ||
+                // Bearer tokens
+                /^bearer\s+[A-Za-z0-9._-]+$/i.test(param) ||
+                // API keys (alphanumeric with special chars, typically 20+ chars)
+                /^[A-Za-z0-9_\-]{20,}$/.test(param) ||
+                // UUIDs
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(param) ||
+                // Long random-looking strings (high entropy)
+                (param.length > 16 && calculateEntropy(param) > 3.5) ||
+                // Very long strings (likely encoded data)
+                param.length > 200;
+            
+            if (isSensitive || looksLikeSecret) {
                 return '[REDACTED]';
             }
+        } else if (typeof param === 'object' && param !== null) {
+            // Recursively sanitize objects
+            return sanitizeObjectForLogging(param);
         }
         return param;
     });
+}
+
+// Calculate string entropy to detect random-looking data
+function calculateEntropy(str) {
+    const freq = {};
+    for (let i = 0; i < str.length; i++) {
+        freq[str[i]] = (freq[str[i]] || 0) + 1;
+    }
+    
+    let entropy = 0;
+    for (const char in freq) {
+        const p = freq[char] / str.length;
+        entropy -= p * Math.log2(p);
+    }
+    return entropy;
+}
+
+// Recursively sanitize objects
+function sanitizeObjectForLogging(obj) {
+    if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeObjectForLogging(item));
+    }
+    
+    if (typeof obj === 'object' && obj !== null) {
+        const sanitized = {};
+        for (const [key, value] of Object.entries(obj)) {
+            const sensitiveKeyPatterns = [
+                /password/i,
+                /token/i,
+                /hash/i,
+                /secret/i,
+                /key/i,
+                /auth/i,
+                /credential/i,
+                /private/i,
+                /bearer/i,
+                /jwt/i,
+                /session/i,
+                /csrf/i,
+                /nonce/i
+            ];
+            
+            const isSensitiveKey = sensitiveKeyPatterns.some(pattern => pattern.test(key));
+            
+            if (isSensitiveKey) {
+                sanitized[key] = '[REDACTED]';
+            } else if (typeof value === 'string') {
+                // Apply the same string checks as in the main function
+                const looksLikeSecret = 
+                    /^[A-Za-z0-9+/]{20,}={0,2}$/.test(value) ||
+                    /^[a-fA-F0-9]{32,}$/.test(value) ||
+                    /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value) ||
+                    /^bearer\s+[A-Za-z0-9._-]+$/i.test(value) ||
+                    /^[A-Za-z0-9_\-]{20,}$/.test(value) ||
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
+                    (value.length > 16 && calculateEntropy(value) > 3.5) ||
+                    value.length > 200;
+                
+                sanitized[key] = looksLikeSecret ? '[REDACTED]' : value;
+            } else {
+                sanitized[key] = sanitizeObjectForLogging(value);
+            }
+        }
+        return sanitized;
+    }
+    
+    return obj;
 }
 
 class SQLiteAdapter {

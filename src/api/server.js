@@ -288,7 +288,8 @@ if (config.NODE_ENV === 'production') {
 // Make database available to routes with performance monitoring
 
 // Database connection middleware - MUST be before routes that need database access
-app.use(async (req, res, next) => {
+// Only apply to API routes to avoid unnecessary connections for static assets
+app.use('/api/', async (req, res, next) => {
     try {
         const connection = await pool.getConnection();
         req.db = connection; // Temporarily bypass monitorQuery
@@ -361,7 +362,7 @@ app.get('/api/health', async (req, res) => {
             poolStats = {
                 type: 'JSON Adapter',
                 connected: pool.connected,
-                databasePath: pool.adapter ? pool.adapter.dbPath : 'unknown'
+                database: pool.connected ? 'connected' : 'disconnected'
             };
         }
         

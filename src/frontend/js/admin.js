@@ -81,7 +81,7 @@ const utils = {
         const alert = document.createElement('div');
         alert.className = `alert alert-${type}`;
         alert.innerHTML = `
-            <span class="alert-message">${message}</span>
+            <span class="alert-message">${this.escapeHtml(message)}</span>
             <button class="alert-close" onclick="this.parentElement.remove()">×</button>
         `;
         
