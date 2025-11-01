@@ -1,5 +1,17 @@
 // Security utilities for XSS protection and CSRF handling
 
+export function getCSPNonce() {
+    const metaTag = document.querySelector('meta[name="csp-nonce"]');
+    return metaTag ? metaTag.getAttribute('content') : '';
+}
+
+export function applyStyleWithNonce(element, styles) {
+    const nonce = getCSPNonce();
+    if (nonce) {
+        element.setAttribute('nonce', nonce);
+    }
+    Object.assign(element.style, styles);
+}
 
 export function showErrorMessage(message) {
     const errorToast = document.createElement('div');
@@ -7,19 +19,21 @@ export function showErrorMessage(message) {
     errorToast.setAttribute('role', 'alert');
     errorToast.setAttribute('aria-live', 'assertive');
     errorToast.textContent = message;
-    errorToast.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: var(--warning);
-        color: white;
-        padding: 1rem;
-        border-radius: 8px;
-        z-index: 10000;
-        max-width: 300px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        animation: slideIn 0.3s ease-out;
-    `;
+    
+    // Apply styles with nonce for CSP compliance
+    applyStyleWithNonce(errorToast, {
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        background: 'var(--warning)',
+        color: 'white',
+        padding: '1rem',
+        borderRadius: '8px',
+        zIndex: '10000',
+        maxWidth: '300px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+        animation: 'slideIn 0.3s ease-out'
+    });
     
     document.body.appendChild(errorToast);
     

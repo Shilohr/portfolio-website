@@ -54,7 +54,6 @@ beforeAll(async () => {
   } catch (error) {
     logger.error('Test database setup failed', null, { 
         error: error.message,
-        stack: error.stack,
         environment: 'test'
     });
     // Don't throw error for unit tests - they use mocks

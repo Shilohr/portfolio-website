@@ -2,6 +2,9 @@
 // AUTHENTICATION JAVASCRIPT
 // ===================================
 
+// Import security utilities
+import { applyStyleWithNonce } from './utils/security.js';
+
 // DOM Elements
 const loginForm = document.getElementById('loginForm');
 const loginMessage = document.getElementById('loginMessage');
@@ -199,12 +202,12 @@ function showMessage(message, type) {
     loginMessage.className = type === 'error' ? 'error-message' : 
                            type === 'info' ? 'info-message' : 'success-message';
     loginMessage.textContent = message;
-    loginMessage.style.display = 'block';
+    applyStyleWithNonce(loginMessage, { display: 'block' });
     
     // Auto hide after 5 seconds
     setTimeout(() => {
         if (loginMessage) {
-            loginMessage.style.display = 'none';
+            applyStyleWithNonce(loginMessage, { display: 'none' });
         }
     }, 5000);
 }

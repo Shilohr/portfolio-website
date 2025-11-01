@@ -1,5 +1,5 @@
 // Core functionality - essential for initial page load
-import { initializeCSRFProtection } from '../utils/security.js';
+import { initializeCSRFProtection, applyStyleWithNonce } from '../utils/security.js';
 import { initializeWithErrorBoundary, hidePageLoader, announceToScreenReader, closeModal, openModal } from '../utils/helpers.js';
 import { showErrorMessage } from '../utils/security.js';
 
@@ -134,12 +134,15 @@ function createStars() {
         const star = document.createElement('div');
         star.className = 'star';
         star.dataset.speed = (Math.random() * 0.5 + 0.1).toString();
-        star.style.left = Math.random() * 100 + '%';
-        star.style.top = Math.random() * 100 + '%';
-        star.style.width = Math.random() * 3 + 'px';
-        star.style.height = star.style.width;
-        star.style.animationDelay = Math.random() * 3 + 's';
-        star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+        const starSize = Math.random() * 3 + 'px';
+        applyStyleWithNonce(star, {
+            left: Math.random() * 100 + '%',
+            top: Math.random() * 100 + '%',
+            width: starSize,
+            height: starSize,
+            animationDelay: Math.random() * 3 + 's',
+            animationDuration: (Math.random() * 3 + 2) + 's'
+        });
         
         starfield.appendChild(star);
     }
@@ -153,10 +156,12 @@ function moveStars() {
         const newTop = currentTop + speed;
         
         if (newTop > 100) {
-            star.style.top = '-5px';
-            star.style.left = Math.random() * 100 + '%';
+            applyStyleWithNonce(star, {
+                top: '-5px',
+                left: Math.random() * 100 + '%'
+            });
         } else {
-            star.style.top = newTop + '%';
+            applyStyleWithNonce(star, { top: newTop + '%' });
         }
     });
 }
@@ -240,12 +245,14 @@ function toggleMobileMenu() {
     const spans = mobileMenuToggle ? mobileMenuToggle.querySelectorAll('span') : [];
     spans.forEach((span, index) => {
         if (isActive) {
-            if (index === 0) span.style.transform = 'rotate(45deg) translateY(8px)';
-            if (index === 1) span.style.opacity = '0';
-            if (index === 2) span.style.transform = 'rotate(-45deg) translateY(-8px)';
+            if (index === 0) applyStyleWithNonce(span, { transform: 'rotate(45deg) translateY(8px)' });
+            if (index === 1) applyStyleWithNonce(span, { opacity: '0' });
+            if (index === 2) applyStyleWithNonce(span, { transform: 'rotate(-45deg) translateY(-8px)' });
         } else {
-            span.style.transform = '';
-            span.style.opacity = '';
+            applyStyleWithNonce(span, {
+                transform: '',
+                opacity: ''
+            });
         }
     });
     

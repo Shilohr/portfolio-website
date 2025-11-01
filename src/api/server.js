@@ -83,12 +83,18 @@ if (config.NODE_ENV === 'production') {
     });
 }
 
+// Generate nonce for CSP
+const generateNonce = () => {
+    const crypto = require('crypto');
+    return crypto.randomBytes(16).toString('base64');
+};
+
 // Security middleware
 const helmetConfig = {
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'"],
             scriptSrc: ["'self'"],
             imgSrc: ["'self'", "data:", "https:"],
         },
@@ -105,7 +111,26 @@ if (config.NODE_ENV === 'production') {
     helmetConfig.crossOriginResourcePolicy = { policy: "cross-origin" };
 }
 
-app.use(helmet(helmetConfig));
+// CSP nonce middleware
+app.use((req, res, next) => {
+    const nonce = generateNonce();
+    res.locals.nonce = nonce;
+    
+    // Dynamically update CSP with nonce
+    const cspConfig = {
+        ...helmetConfig,
+        contentSecurityPolicy: {
+            directives: {
+                ...helmetConfig.contentSecurityPolicy.directives,
+                styleSrc: ["'self'", `'nonce-${nonce}'`],
+                scriptSrc: ["'self'", `'nonce-${nonce}'`],
+            }
+        }
+    };
+    
+    // Apply helmet with dynamic CSP
+    helmet(cspConfig)(req, res, next);
+});
 
 // CORS configuration
 const corsOptions = {
@@ -554,8 +579,8 @@ app.post('/api/admin/maintenance', [
 });
 
 /**
- * Serves HTML pages with injected CSRF token
- * Dynamically injects CSRF token into meta tag for frontend security
+ * Serves HTML pages with injected CSRF token and CSP nonce
+ * Dynamically injects CSRF token and CSP nonce into meta tags for frontend security
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {string} htmlFile - HTML file to serve
@@ -579,11 +604,29 @@ async function serveHtmlWithCSRF(req, res, htmlFile) {
             }
         }
         
+        // Check if CSP nonce meta tag exists, if not add it
+        if (!html.includes('csp-nonce')) {
+            // Add CSP nonce meta tag after other meta tags
+            const metaInsertPoint = html.indexOf('</head>');
+            if (metaInsertPoint !== -1) {
+                html = html.substring(0, metaInsertPoint) + 
+                    '    <meta name="csp-nonce" id="csp-nonce" content="">\n' + 
+                    html.substring(metaInsertPoint);
+            }
+        }
+        
         // Inject CSRF token into meta tag for frontend security
         const csrfToken = req.csrfToken();
         html = html.replace(
             '<meta name="csrf-token" id="csrf-token" content="">',
             `<meta name="csrf-token" id="csrf-token" content="${csrfToken}">`
+        );
+        
+        // Inject CSP nonce into meta tag for JavaScript access
+        const nonce = res.locals.nonce;
+        html = html.replace(
+            '<meta name="csp-nonce" id="csp-nonce" content="">',
+            `<meta name="csp-nonce" id="csp-nonce" content="${nonce}">`
         );
         
         res.send(html);

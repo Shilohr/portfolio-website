@@ -2,6 +2,9 @@
 // PROJECTS PAGE JAVASCRIPT
 // ===================================
 
+// Import security utilities
+import { applyStyleWithNonce } from './utils/security.js';
+
 // XSS Protection Utility
 function escapeHtml(unsafe) {
     if (unsafe === null || unsafe === undefined) return '';
@@ -133,7 +136,7 @@ class ProjectsPage {
 
     showLoadingState(container) {
         container.innerHTML = `
-            <div class="loading-state text-center" style="grid-column: 1 / -1;">
+            <div class="loading-state text-center grid-full-width">
                 <div class="loading-spinner"></div>
                 <p class="neon-text">Loading projects from the cosmos...</p>
             </div>
@@ -143,7 +146,7 @@ class ProjectsPage {
 
     showErrorState(container, message) {
         container.innerHTML = `
-            <div class="error-state text-center" style="grid-column: 1 / -1;">
+            <div class="error-state text-center grid-full-width">
                 <div class="error-icon"></div>
                 <h3 class="neon-pink">Error Loading Projects</h3>
                 <p>${escapeHtml(message)}</p>
@@ -157,7 +160,7 @@ class ProjectsPage {
         
         if (this.projects.length === 0) {
             grid.innerHTML = `
-                <div class="no-projects text-center" style="grid-column: 1 / -1;">
+                <div class="no-projects text-center grid-full-width">
                     <div class="no-results-icon"></div>
                     <h3 class="neon-text">No Projects Found</h3>
                     <p>No projects match your current filters. Try adjusting your search criteria.</p>
@@ -189,13 +192,16 @@ class ProjectsPage {
         const language = project.primary_language || project.language || '';
         const languageColor = this.getLanguageColor(language);
         
+        const animationDelayClass = `animation-delay-${Math.min(index, 5)}`;
+        const languageStyle = language ? `style="background: ${languageColor}"` : '';
+        
         return `
-            <div class="project-card glass-card" data-id="${escapeHtml(project.id)}" style="animation-delay: ${index * 0.1}s">
+            <div class="project-card glass-card ${animationDelayClass}" data-id="${escapeHtml(project.id)}">
                 ${featuredBadge}
                 <div class="project-header">
                     <div class="project-title-container">
                         <h3 class="project-title">${escapeHtml(project.title || project.name)}</h3>
-                        ${language ? `<span class="project-language" style="background: ${languageColor}">${escapeHtml(language)}</span>` : ''}
+                        ${language ? `<span class="project-language" ${languageStyle}>${escapeHtml(language)}</span>` : ''}
                     </div>
                     <div class="project-stats">
                         ${project.stars !== undefined ? `<span class="stat"> ${project.stars}</span>` : ''}

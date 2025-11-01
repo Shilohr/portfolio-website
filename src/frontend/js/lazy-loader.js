@@ -2,6 +2,9 @@
 // LAZY LOADING MODULE
 // ===================================
 
+// Import security utilities
+import { applyStyleWithNonce } from './utils/security.js';
+
 class LazyLoader {
     constructor() {
         this.imageObserver = null;
@@ -73,10 +76,12 @@ class LazyLoader {
                     this.loadedImages.add(src);
                     
                     // Add fade-in effect
-                    img.style.opacity = '0';
+                    applyStyleWithNonce(img, { opacity: '0' });
                     setTimeout(() => {
-                        img.style.transition = 'opacity 0.5s ease-in-out';
-                        img.style.opacity = '1';
+                        applyStyleWithNonce(img, {
+                            transition: 'opacity 0.5s ease-in-out',
+                            opacity: '1'
+                        });
                     }, 10);
                     
                     resolve();
@@ -313,14 +318,16 @@ class LazyLoader {
             const blurImg = new Image();
             blurImg.onload = () => {
                 img.src = blurUrl;
-                img.style.filter = 'blur(10px)';
-                img.style.transition = 'filter 0.3s ease-in-out';
+                applyStyleWithNonce(img, {
+                    filter: 'blur(10px)',
+                    transition: 'filter 0.3s ease-in-out'
+                });
                 
                 // Then load full version
                 const fullImg = new Image();
                 fullImg.onload = () => {
                     img.src = fullUrl;
-                    img.style.filter = 'blur(0)';
+                    applyStyleWithNonce(img, { filter: 'blur(0)' });
                 };
                 fullImg.src = fullUrl;
             };

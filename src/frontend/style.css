@@ -1040,6 +1040,23 @@ body {
   pointer-events: none;
 }
 
+.retro-button.full-width {
+  width: 100%;
+}
+
+/* Grid column utilities */
+.grid-full-width {
+  grid-column: 1 / -1;
+}
+
+/* Animation delay utilities */
+.animation-delay-0 { animation-delay: 0s; }
+.animation-delay-1 { animation-delay: 0.1s; }
+.animation-delay-2 { animation-delay: 0.2s; }
+.animation-delay-3 { animation-delay: 0.3s; }
+.animation-delay-4 { animation-delay: 0.4s; }
+.animation-delay-5 { animation-delay: 0.5s; }
+
 .retro-button[aria-pressed="true"] {
   background: var(--accent);
   border-color: var(--accent);

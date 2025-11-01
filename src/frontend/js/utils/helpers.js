@@ -1,4 +1,6 @@
 // General utility functions
+import { applyStyleWithNonce } from './security.js';
+
 export function initializeWithErrorBoundary(name, initFunction) {
     return new Promise(async (resolve) => {
         try {
@@ -17,7 +19,7 @@ export function hidePageLoader() {
     if (pageLoader) {
         pageLoader.classList.add('fade-out');
         setTimeout(() => {
-            pageLoader.style.display = 'none';
+            applyStyleWithNonce(pageLoader, { display: 'none' });
         }, 1000);
     }
 }
@@ -64,7 +66,7 @@ export function openModal(modal, announceToScreenReader) {
     modal.addEventListener('keydown', trapFocus);
     modal.dataset.focusTrapHandler = 'true';
     
-    document.body.style.overflow = 'hidden';
+    applyStyleWithNonce(document.body, { overflow: 'hidden' });
     
     if (announceToScreenReader) {
         announceToScreenReader('Modal opened');
@@ -86,7 +88,7 @@ export function closeModal(modal, announceToScreenReader) {
         delete modal._focusTrapHandler;
     }
     
-    document.body.style.overflow = '';
+    applyStyleWithNonce(document.body, { overflow: '' });
     
     // Restore focus to the element that opened the modal
     const triggerElement = document.querySelector('[data-modal-target]');

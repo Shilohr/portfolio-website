@@ -3,7 +3,7 @@
 // ===================================
 
 // Import CSRF protection
-import { initializeCSRFProtection } from './utils/security.js';
+import { initializeCSRFProtection, applyStyleWithNonce } from './utils/security.js';
 
 // Utility Functions
 const utils = {
@@ -99,13 +99,13 @@ const utils = {
         const container = document.createElement('div');
         container.id = 'alertContainer';
         container.className = 'alert-container';
-        container.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-            max-width: 400px;
-        `;
+        applyStyleWithNonce(container, {
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            zIndex: '10000',
+            maxWidth: '400px'
+        });
         document.body.appendChild(container);
         return container;
     },
@@ -174,21 +174,21 @@ const loading = {
             <div class="loading-spinner"></div>
             <div class="loading-text">${message}</div>
         `;
-        loadingElement.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            color: white;
-            font-family: 'Courier New', monospace;
-        `;
+        applyStyleWithNonce(loadingElement, {
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            right: '0',
+            bottom: '0',
+            background: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: '1000',
+            color: 'white',
+            fontFamily: "'Courier New', monospace"
+        });
         
         container.style.position = 'relative';
         container.appendChild(loadingElement);
@@ -225,11 +225,11 @@ const forms = {
         const errorElement = document.createElement('div');
         errorElement.className = 'form-error';
         errorElement.textContent = message;
-        errorElement.style.cssText = `
-            color: #ff6b6b;
-            font-size: 0.875rem;
-            margin-top: 0.25rem;
-        `;
+        applyStyleWithNonce(errorElement, {
+            color: '#ff6b6b',
+            fontSize: '0.875rem',
+            marginTop: '0.25rem'
+        });
         
         field.parentElement.appendChild(errorElement);
         field.classList.add('error');

@@ -158,7 +158,6 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
     } catch (error) {
         logger.error('Registration failed', req, { 
             error: error.message,
-            stack: error.stack,
             requestBody: { username, email }
         });
         sendError(res, 'DATABASE_ERROR', 'Registration failed');
@@ -168,7 +167,7 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
 // Test route without database
 router.post('/login-test', async (req, res) => {
     try {
-        logger.info('Login test route hit', req, { body: req.body });
+        logger.info('Login test route hit', req, { body: { username: req.body?.username } });
         res.json({ success: true, message: 'Test route works' });
     } catch (error) {
         logger.error('Login test failed', req, { error: error.message });
@@ -333,7 +332,6 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
     } catch (error) {
 logger.error('Login failed', req, { 
             error: error.message,
-            stack: error.stack,
             requestBody: { username: req.body?.username || 'unknown' }
         });
         sendError(res, 'DATABASE_ERROR', 'Login failed');
@@ -341,14 +339,30 @@ logger.error('Login failed', req, {
 });
 
 router.post('/logout', async (req, res) => {
-    try {
-        const token = req.cookies.portfolio_token || req.headers.authorization?.split(' ')[1];
-        if (!token) {
-            return sendError(res, 'VALIDATION_ERROR', 'No token provided');
-        }
+    const token = req.cookies.portfolio_token || req.headers.authorization?.split(' ')[1];
+    if (!token) {
+        return sendError(res, 'VALIDATION_ERROR', 'No token provided');
+    }
 
-        // Decode token to get user info
-        const decoded = jwt.verify(token, JWT_SECRET);
+    let decoded;
+    try {
+        // Decode token to get user info - separate JWT verification from database operations
+        decoded = jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+        // Handle JWT-specific errors separately
+        if (error.name === 'JsonWebTokenError') {
+            return sendError(res, 'UNAUTHORIZED', 'Invalid token');
+        } else if (error.name === 'TokenExpiredError') {
+            return sendError(res, 'FORBIDDEN', 'Token expired');
+        } else {
+            logger.error('Unexpected JWT verification error', req, { 
+                error: error.message
+            });
+            return sendError(res, 'INTERNAL_ERROR', 'Token verification failed');
+        }
+    }
+
+    try {
         const db = req.db;
 
         let sessionToInvalidate = null;
@@ -421,11 +435,11 @@ router.post('/logout', async (req, res) => {
         sendSuccess(res, null, 'Logout successful');
 
     } catch (error) {
-        logger.error('Logout failed', req, { 
-            error: error.message,
-            stack: error.stack
+        // This catch block now only handles genuine database/storage failures
+        logger.error('Logout database operation failed', req, { 
+            error: error.message
         });
-        sendError(res, 'DATABASE_ERROR', 'Logout failed');
+        sendError(res, 'DATABASE_ERROR', 'Logout failed due to storage error');
     }
 });
 
@@ -481,8 +495,7 @@ const authenticateToken = (req, res, next) => {
                 next();
             } catch (error) {
                 logger.error('Token validation failed (fallback)', req, { 
-                    error: error.message,
-                    stack: error.stack
+                    error: error.message
                 });
                 sendError(res, 'DATABASE_ERROR', 'Token validation failed');
             }
@@ -503,8 +516,7 @@ const authenticateToken = (req, res, next) => {
 
             const session = sessions[0];
 
-            // Use timing-safe comparison for the token hash
-            const computedHash = await bcrypt.hash(token, 12);
+            // Verify token against stored hash
             const isValid = await comparePassword(token, session.token_hash);
 
             if (!isValid) {
@@ -516,8 +528,7 @@ const authenticateToken = (req, res, next) => {
             next();
         } catch (error) {
             logger.error('Token validation failed', req, { 
-                error: error.message,
-                stack: error.stack
+                error: error.message
             });
             sendError(res, 'DATABASE_ERROR', 'Token validation failed');
         }
@@ -591,8 +602,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         sendSuccess(res, { user: users[0] }, 'Profile fetched successfully');
     } catch (error) {
         logger.error('Failed to fetch profile', req, { 
-            error: error.message,
-            stack: error.stack
+            error: error.message
         });
         sendError(res, 'DATABASE_ERROR', 'Failed to fetch profile');
     }
