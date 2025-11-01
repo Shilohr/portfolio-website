@@ -135,7 +135,7 @@ export async function initializeCSRFProtection() {
         }
         
         const data = await response.json();
-        window.csrfToken = data.csrfToken;
+        window.csrfToken = data.data.csrfToken;
         
         console.log('CSRF protection initialized successfully');
         
@@ -166,7 +166,7 @@ async function refreshCSRFToken() {
         }
         
         const data = await response.json();
-        window.csrfToken = data.csrfToken;
+        window.csrfToken = data.data.csrfToken;
         
         console.log('CSRF token refreshed successfully');
         

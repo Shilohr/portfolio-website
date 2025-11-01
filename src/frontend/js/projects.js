@@ -135,13 +135,16 @@ class ProjectsPage {
     }
 
     showLoadingState(container) {
+        const pagination = document.getElementById('pagination');
         container.innerHTML = `
             <div class="loading-state text-center grid-full-width">
                 <div class="loading-spinner"></div>
                 <p class="neon-text">Loading projects from the cosmos...</p>
             </div>
         `;
-        pagination.innerHTML = '';
+        if (pagination) {
+            pagination.innerHTML = '';
+        }
     }
 
     showErrorState(container, message) {
@@ -367,53 +370,53 @@ class ProjectsPage {
         const project = this.projects.find(p => p.id == projectId);
         if (!project) return;
 
-        // Create modal content
+        // Create modal content with proper HTML escaping
         const modalHTML = `
             <div class="project-modal" id="projectModal">
                 <div class="modal-backdrop" onclick="projectsPage.closeProjectDetails()"></div>
                 <div class="modal-content glass-card">
                     <div class="modal-header">
-                        <h2 class="neon-text">${project.title || project.name}</h2>
+                        <h2 class="neon-text">${escapeHtml(project.title || project.name)}</h2>
                         <button class="modal-close" onclick="projectsPage.closeProjectDetails()">×</button>
                     </div>
                     <div class="modal-body">
-                        ${project.description ? `<p class="project-description">${project.description}</p>` : ''}
+                        ${project.description ? `<p class="project-description">${escapeHtml(project.description)}</p>` : ''}
                         
                         ${project.technologies && project.technologies.length > 0 ? `
                             <div class="project-technologies">
                                 <h4>Technologies:</h4>
-                                ${project.technologies.map(tech => `<span class="tech-tag">${tech}</span>`).join('')}
+                                ${project.technologies.map(tech => `<span class="tech-tag">${escapeHtml(tech)}</span>`).join('')}
                             </div>
                         ` : ''}
                         
                         <div class="project-meta-details">
                             <div class="meta-item">
-                                <strong>Status:</strong> <span class="project-status status-${project.status || 'active'}">${project.status || 'Active'}</span>
+                                <strong>Status:</strong> <span class="project-status status-${escapeHtml(project.status || 'active')}">${escapeHtml(project.status || 'Active')}</span>
                             </div>
                             <div class="meta-item">
-                                <strong>Created:</strong> ${this.formatDate(project.created_at)}
+                                <strong>Created:</strong> ${escapeHtml(this.formatDate(project.created_at))}
                             </div>
                             ${project.updated_at ? `
                                 <div class="meta-item">
-                                    <strong>Last Updated:</strong> ${this.formatDate(project.updated_at)}
+                                    <strong>Last Updated:</strong> ${escapeHtml(this.formatDate(project.updated_at))}
                                 </div>
                             ` : ''}
                             ${project.stars !== undefined ? `
                                 <div class="meta-item">
-                                    <strong>Stars:</strong>  ${project.stars}
+                                    <strong>Stars:</strong>  ${escapeHtml(project.stars)}
                                 </div>
                             ` : ''}
                             ${project.forks !== undefined ? `
                                 <div class="meta-item">
-                                    <strong>Forks:</strong>  ${project.forks}
+                                    <strong>Forks:</strong>  ${escapeHtml(project.forks)}
                                 </div>
                             ` : ''}
                         </div>
                         
                         <div class="project-links-full">
-                            ${project.github_url ? `<a href="${project.github_url}" target="_blank" class="btn">View on GitHub</a>` : ''}
-                            ${project.live_url ? `<a href="${project.live_url}" target="_blank" class="btn">Live Demo</a>` : ''}
-                            ${project.html_url ? `<a href="${project.html_url}" target="_blank" class="btn">View Repository</a>` : ''}
+                            ${project.github_url ? `<a href="${escapeHtml(project.github_url)}" target="_blank" class="btn">View on GitHub</a>` : ''}
+                            ${project.live_url ? `<a href="${escapeHtml(project.live_url)}" target="_blank" class="btn">Live Demo</a>` : ''}
+                            ${project.html_url ? `<a href="${escapeHtml(project.html_url)}" target="_blank" class="btn">View Repository</a>` : ''}
                         </div>
                     </div>
                 </div>

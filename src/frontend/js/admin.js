@@ -292,7 +292,7 @@ class AuthManager {
         
         try {
             const response = await utils.apiRequest('/auth/profile');
-            this.user = response.user;
+            this.user = response.data.user;
         } catch (error) {
             console.error('Authentication check failed:', error);
             // Only redirect if we're not already on login page
@@ -390,7 +390,7 @@ class AdminDashboard {
 
         try {
             const response = await utils.apiRequest('/projects');
-            this.projects = response.projects || [];
+            this.projects = response.data.projects || [];
             this.renderProjects();
         } catch (error) {
             errorHandler.handleApiError(error, '/projects');
@@ -457,7 +457,7 @@ class AdminDashboard {
 
         try {
             const response = await utils.apiRequest('/github/repos');
-            this.githubRepos = response.repositories || [];
+            this.githubRepos = response.data.repositories || [];
             this.renderGitHubRepos();
         } catch (error) {
             errorHandler.handleApiError(error, '/github/repos');
@@ -645,7 +645,7 @@ class AdminDashboard {
                 }
             });
 
-            utils.showAlert(`Successfully synced ${response.syncedCount || 0} repositories`, 'success');
+            utils.showAlert(`Successfully synced ${response.data.syncedCount || 0} repositories`, 'success');
             await this.loadGitHubRepos();
         } catch (error) {
             errorHandler.handleApiError(error, '/github/sync');

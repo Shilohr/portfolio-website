@@ -148,7 +148,7 @@ async function handleGitHubSync() {
             
             if (response.ok) {
                 const data = await response.json();
-                window.csrfToken = data.csrfToken;
+                window.csrfToken = data.data.csrfToken;
                 
             }
         } catch (error) {

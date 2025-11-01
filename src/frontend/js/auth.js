@@ -168,7 +168,7 @@ async function requireAuth() {
         }
         
         const data = await response.json();
-        return data.user;
+        return data.data.user;
         
     } catch (error) {
         console.error('Auth verification error:', error);
@@ -186,7 +186,7 @@ async function getCurrentUser() {
         
         if (response.ok) {
             const data = await response.json();
-            return data.user;
+            return data.data.user;
         }
         return null;
     } catch (error) {
@@ -258,7 +258,7 @@ async function refreshToken() {
         
         if (response.ok) {
             const data = await response.json();
-            return data.token;
+            return data.data.token;
         } else {
             logout();
             return false;
