@@ -81,6 +81,11 @@ const envSchema = Joi.object({
         then: Joi.string().uri().default('https://shilohrobinson.dev'),
         otherwise: Joi.string().default('http://localhost:8080')
     }),
+    ALLOWED_HOSTS: Joi.string().when('NODE_ENV', {
+        is: 'production',
+        then: Joi.string().default('shilohrobinson.dev,www.shilohrobinson.dev'),
+        otherwise: Joi.string().default('localhost,127.0.0.1')
+    }),
 
     // Logging Configuration
     LOG_LEVEL: Joi.string()
@@ -225,6 +230,7 @@ function validateConfig() {
             hasJwtSecret: !!envVars.JWT_SECRET,
             jwtSecretLength: envVars.JWT_SECRET ? envVars.JWT_SECRET.length : 0,
             corsOrigin: envVars.CORS_ORIGIN,
+            allowedHosts: envVars.ALLOWED_HOSTS,
             rateLimiting: {
                 windowMs: envVars.RATE_LIMIT_WINDOW_MS,
                 maxRequests: envVars.RATE_LIMIT_MAX_REQUESTS,

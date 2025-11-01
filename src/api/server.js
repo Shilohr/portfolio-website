@@ -56,11 +56,27 @@ const PORT = config.PORT;
 // Trust proxy for nginx (specific IP ranges for security)
 app.set('trust proxy', ['127.0.0.1', '::1']);
 
-// HTTPS enforcement in production
+// HTTPS enforcement in production with host validation
 if (config.NODE_ENV === 'production') {
     app.use((req, res, next) => {
         if (req.header('x-forwarded-proto') !== 'https') {
-            res.redirect(`https://${req.header('host')}${req.url}`);
+            const requestHost = req.header('host');
+            const allowedHosts = config.ALLOWED_HOSTS ? config.ALLOWED_HOSTS.split(',').map(h => h.trim()) : [];
+            
+            // Validate host header against allowlist
+            if (allowedHosts.includes(requestHost)) {
+                res.redirect(`https://${requestHost}${req.url}`);
+            } else {
+                logger.warn('Invalid host header in HTTPS redirect', req, {
+                    host: requestHost,
+                    allowedHosts: allowedHosts,
+                    url: req.url
+                });
+                res.status(400).json({ 
+                    error: 'Bad Request',
+                    message: 'Invalid host header'
+                });
+            }
         } else {
             next();
         }

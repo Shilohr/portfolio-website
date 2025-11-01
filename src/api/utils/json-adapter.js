@@ -285,6 +285,11 @@ async save() {
             return [{ test: 1 }];
         }
         
+        // Handle optimized project queries with JOINs and GROUP_CONCAT
+        if (sql.includes('FROM projects p') && sql.includes('LEFT JOIN')) {
+            return this.executeOptimizedProjectQuery(sql, params, dataSource);
+        }
+        
         // Handle COUNT queries
         if (sql.includes('COUNT(*)')) {
             const tableMatch = sql.match(/FROM\s+(\w+)/i);
@@ -345,207 +350,131 @@ async save() {
             data = data.slice(offset, offset + limit);
         }
         
-        return data;
+return data;
     }
 
-    async executeInsert(sql, params, connectionContext = null) {
-        const tableMatch = sql.match(/INSERT\s+INTO\s+(\w+)/i);
-        if (!tableMatch) return { affectedRows: 0 };
+    executeOptimizedProjectQuery(sql, params, dataSource) {
+        // Extract WHERE conditions from the main query
+        const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+GROUP\s+BY|\s+ORDER\s+BY|\s+LIMIT|$)/i);
+        let whereClause = whereMatch ? whereMatch[1] : '';
         
-        let tableName = tableMatch[1].toLowerCase();
-        // Map user_sessions to sessions for JSON adapter
-        if (tableName === 'user_sessions') {
-            tableName = 'sessions';
+        // Extract ORDER BY
+        const orderMatch = sql.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|$)/i);
+        const orderClause = orderMatch ? orderMatch[1] : 'p.order_index ASC, p.created_at DESC';
+        
+        // Get base projects data
+        let projects = dataSource.projects || [];
+        
+        // Apply WHERE conditions to projects
+        let remainingParams = params;
+        if (whereClause) {
+            // Count placeholders in WHERE clause
+            const wherePlaceholderCount = (whereClause.match(/\?/g) || []).length;
+            const whereParams = params.slice(0, wherePlaceholderCount);
+            projects = this.applyWhereClause(projects, whereClause, whereParams);
+            // Remove WHERE parameters from the array, leaving LIMIT/OFFSET parameters
+            remainingParams = params.slice(wherePlaceholderCount);
         }
         
-        // Use transaction data if connection is in transaction
-        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
-            ? connectionContext.transactionData 
-            : this.data;
-            
-        if (!dataSource[tableName]) {
-            dataSource[tableName] = [];
-        }
-        
-        // Simple INSERT implementation
-        const newRecord = {};
-        if (params && params.length > 0) {
-            // Use parameters to create record
-            const columnsMatch = sql.match(/\(([^)]+)\)/);
-            if (columnsMatch) {
-                const columns = columnsMatch[1].split(',').map(c => c.trim());
-                columns.forEach((col, index) => {
-                    newRecord[col] = params[index];
-                });
+        // Extract LIMIT and OFFSET from remaining parameters
+        let limit = null;
+        let offset = 0;
+        if (sql.includes('LIMIT') && remainingParams.length > 0) {
+            limit = remainingParams[0] || null;
+            if (remainingParams.length > 1) {
+                offset = remainingParams[1] || 0;
             }
         }
         
-        // Add auto-increment ID if not present
-        if (!newRecord.id) {
-            // For ID generation, use timestamp + random to ensure uniqueness
-            // This avoids ID conflicts across concurrent operations
-            const timestamp = Date.now();
-            const random = Math.floor(Math.random() * 1000);
-            newRecord.id = parseInt(`${timestamp}${random.toString().padStart(3, '0')}`);
+        // Apply ORDER BY
+        projects = this.applyProjectOrderBy(projects, orderClause);
+        
+        // Calculate total count before LIMIT for pagination
+        const totalCount = projects.length;
+        
+        // Apply LIMIT and OFFSET
+        const limitedProjects = limit !== null ? projects.slice(offset, offset + limit) : projects;
+        
+        
+        
+        // Batch fetch all needed users and technologies
+        const userIds = [...new Set(limitedProjects.map(p => p.user_id).filter(id => id))];
+        const projectIds = limitedProjects.map(p => p.id);
+        
+        const usersMap = new Map();
+        const technologiesMap = new Map();
+        
+        // Batch fetch users
+        if (userIds.length > 0) {
+            const users = dataSource.users || [];
+            users.filter(user => userIds.includes(user.id)).forEach(user => {
+                usersMap.set(user.id, user.username);
+            });
         }
         
-        dataSource[tableName].push(newRecord);
-        
-        // Use connection context for save if available
-        const saveMethod = connectionContext ? connectionContext.save.bind(connectionContext) : this.save.bind(this);
-        try {
-            await saveMethod();
-        } catch (error) {
-            // Rollback the insert if save failed
-            const index = dataSource[tableName].findIndex(r => r.id === newRecord.id);
-            if (index !== -1) {
-                dataSource[tableName].splice(index, 1);
-            }
-            throw error;
-        }
-        
-        return { 
-            insertId: newRecord.id, 
-            affectedRows: 1 
-        };
-    }
-
-    async executeUpdate(sql, params, connectionContext = null) {
-        const tableMatch = sql.match(/UPDATE\s+(\w+)/i);
-        if (!tableMatch) return { affectedRows: 0 };
-        
-        let tableName = tableMatch[1].toLowerCase();
-        // Map user_sessions to sessions for JSON adapter
-        if (tableName === 'user_sessions') {
-            tableName = 'sessions';
-        }
-        
-        // Use transaction data if connection is in transaction
-        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
-            ? connectionContext.transactionData 
-            : this.data;
-            
-        let data = dataSource[tableName] || [];
-        
-        // Parse SET clause and extract SET parameters
-        const setMatch = sql.match(/SET\s+(.+?)(?:\s+WHERE|$)/i);
-        let setParams = [];
-        let updates = {};
-        
-        if (setMatch) {
-            const setClause = setMatch[1];
-            const setPlaceholderCount = (setClause.match(/\?/g) || []).length;
-            setParams = params.slice(0, setPlaceholderCount);
-            updates = this.parseSetClause(setClause, setParams);
-        }
-        
-        // Parse WHERE clause and extract WHERE parameters
-        const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+LIMIT|$)/i);
-        let whereParams = [];
-        
-        if (whereMatch) {
-            const whereClause = whereMatch[1];
-            whereParams = params.slice(setParams.length); // Remaining params are for WHERE
-            data = this.applyWhereClause(data, whereClause, whereParams);
-        }
-        
-        // Apply SET operations if we have updates
-        if (Object.keys(updates).length > 0) {
-            // Store original state for rollback
-            const originalStates = [];
-            let affectedRows = 0;
-            
-            data.forEach(record => {
-                const originalData = dataSource[tableName].find(r => r.id === record.id);
-                if (originalData) {
-                    originalStates.push({
-                        id: originalData.id,
-                        data: { ...originalData }
-                    });
-                    Object.assign(originalData, updates);
-                    affectedRows++;
+        // Batch fetch technologies
+        if (projectIds.length > 0) {
+            const projectTechs = dataSource.project_technologies || [];
+            projectTechs.forEach(pt => {
+                if (projectIds.includes(pt.project_id)) {
+                    if (!technologiesMap.has(pt.project_id)) {
+                        technologiesMap.set(pt.project_id, []);
+                    }
+                    technologiesMap.get(pt.project_id).push(pt.technology);
                 }
             });
-            
-            // Use connection context for save if available
-            const saveMethod = connectionContext ? connectionContext.save.bind(connectionContext) : this.save.bind(this);
-            try {
-                await saveMethod();
-            } catch (error) {
-                // Rollback updates if save failed
-                originalStates.forEach(({ id, data: originalData }) => {
-                    const index = dataSource[tableName].findIndex(r => r.id === id);
-                    if (index !== -1) {
-                        dataSource[tableName][index] = originalData;
+        }
+        
+        // Enrich projects with batch-fetched data
+        return limitedProjects.map(project => ({
+            ...project,
+            owner_username: usersMap.get(project.user_id) || null,
+            technologies: technologiesMap.has(project.id) 
+                ? technologiesMap.get(project.id).sort().join(',') 
+                : '',
+            total_count: totalCount
+        }));
+    }
+
+    applyProjectOrderBy(data, orderClause) {
+        // Handle multiple ORDER BY columns for projects
+        const orders = orderClause.split(',').map(order => order.trim());
+        
+        return [...data].sort((a, b) => {
+            for (const order of orders) {
+                const match = order.match(/(?:p\.)?(\w+)\s*(ASC|DESC)?/i);
+                if (match) {
+                    const column = match[1];
+                    const direction = match[2] || 'ASC';
+                    
+                    let aVal = a[column];
+                    let bVal = b[column];
+                    
+                    // Handle null/undefined values
+                    if (aVal === null || aVal === undefined) aVal = '';
+                    if (bVal === null || bVal === undefined) bVal = '';
+                    
+                    // Convert to string for consistent comparison
+                    aVal = String(aVal);
+                    bVal = String(bVal);
+                    
+                    if (direction.toUpperCase() === 'DESC') {
+                        if (bVal > aVal) return 1;
+                        if (bVal < aVal) return -1;
+                    } else {
+                        if (aVal > bVal) return 1;
+                        if (aVal < bVal) return -1;
                     }
-                });
-                throw error;
+                }
             }
-            
-            return { affectedRows };
-        }
-        
-        return { affectedRows: 0 };
-    }
-
-    async executeDelete(sql, params, connectionContext = null) {
-        const tableMatch = sql.match(/DELETE\s+FROM\s+(\w+)/i);
-        if (!tableMatch) return { affectedRows: 0 };
-        
-        let tableName = tableMatch[1].toLowerCase();
-        // Map user_sessions to sessions for JSON adapter
-        if (tableName === 'user_sessions') {
-            tableName = 'sessions';
-        }
-        
-        // Use transaction data if connection is in transaction
-        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
-            ? connectionContext.transactionData 
-            : this.data;
-            
-        let data = dataSource[tableName] || [];
-        
-        // Apply WHERE conditions
-        const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+LIMIT|$)/i);
-        if (whereMatch) {
-            const whereClause = whereMatch[1];
-            const toDelete = this.applyWhereClause([...data], whereClause, params);
-            
-            // Store original data for rollback
-            const originalData = [...dataSource[tableName]];
-            
-            // Remove records
-            dataSource[tableName] = data.filter(record => 
-                !toDelete.some(deleteRecord => deleteRecord.id === record.id)
-            );
-            
-            // Use connection context for save if available
-            const saveMethod = connectionContext ? connectionContext.save.bind(connectionContext) : this.save.bind(this);
-            try {
-                await saveMethod();
-            } catch (error) {
-                // Rollback deletion if save failed
-                dataSource[tableName] = originalData;
-                throw error;
-            }
-            
-            return { affectedRows: toDelete.length };
-        }
-        
-        return { affectedRows: 0 };
-    }
-
-    executeCreate(sql, params) {
-        // Handle CREATE TABLE statements - no-op for JSON adapter
-        logger.info('CREATE TABLE statement ignored in JSON adapter', null, { sql });
-        return [];
+            return 0;
+        });
     }
 
     applyWhereClause(data, whereClause, params) {
         // Check for unsupported SQL constructs that could cause issues
         const unsupportedPatterns = [
             /LIMIT\s+/i,
-            /GROUP\s+BY/i,
             /HAVING\s+/i,
             /UNION/i,
             /JOIN/i,

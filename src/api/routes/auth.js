@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { logger } = require('../utils/logger');
 const { sendError, sendSuccess, createErrorResponse } = require('../utils/errorHandler');
 const { commonValidations, handleValidationErrors } = require('../utils/validation');
@@ -69,21 +70,36 @@ const comparePassword = async (password, hash) => {
 };
 
 /**
+ * Performs timing-safe string comparison using HMAC
+ * @param {string} a - First string to compare
+ * @param {string} b - Second string to compare
+ * @returns {boolean} True if strings match, false otherwise
+ */
+const timingSafeEqual = (a, b) => {
+    if (a.length !== b.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+};
+
+/**
  * Generates a JWT token for authenticated user
  * @param {number} userId - User's unique identifier
  * @param {string} username - User's username
  * @param {string} role - User's role (e.g., 'admin', 'user')
- * @returns {string} JWT token string
+ * @returns {Object} Object containing token and jti
  */
 const generateToken = (userId, username, role) => {
     if (!JWT_SECRET) {
         throw new Error('JWT_SECRET is not defined in generateToken');
     }
-    return jwt.sign(
-        { userId, username, role },
+    const jti = crypto.randomBytes(16).toString('hex');
+    const token = jwt.sign(
+        { userId, username, role, jti },
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN }
     );
+    return { token, jti };
 };
 
 // Routes
@@ -246,14 +262,14 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
                 [user.id]
             );
 
-            // Generate JWT token
-            const token = generateToken(user.id, user.username, user.role);
+            // Generate JWT token with jti
+            const { token, jti } = generateToken(user.id, user.username, user.role);
 
-            // Store session in database
+            // Store session in database with jti for fast lookup
             const tokenHash = await hashPassword(token);
             await connection.execute(
-                'INSERT INTO user_sessions (user_id, token_hash, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)',
-                [user.id, tokenHash, new Date(Date.now() + 24 * 60 * 60 * 1000), req.ip, req.get('User-Agent')]
+                'INSERT INTO user_sessions (user_id, token_hash, jti, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)',
+                [user.id, tokenHash, jti, new Date(Date.now() + 24 * 60 * 60 * 1000), req.ip, req.get('User-Agent')]
             );
 
             // Log successful login
@@ -335,19 +351,36 @@ router.post('/logout', async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         const db = req.db;
 
-        // Get active sessions for user and find matching token
-        const [sessions] = await db.execute(
-            'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
-            [decoded.userId]
-        );
-
-        // Find the session that matches our token
         let sessionToInvalidate = null;
-        for (const session of sessions) {
-            const isValid = await comparePassword(token, session.token_hash);
-            if (isValid) {
-                sessionToInvalidate = session;
-                break;
+
+        // Check if token has jti (new format) or fallback to old method
+        if (decoded.jti) {
+            // New fast method using jti
+            const [sessions] = await db.execute(
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE',
+                [decoded.userId, decoded.jti]
+            );
+            
+            if (sessions.length > 0) {
+                const isValid = await comparePassword(token, sessions[0].token_hash);
+                if (isValid) {
+                    sessionToInvalidate = sessions[0];
+                }
+            }
+        } else {
+            // Fallback for old tokens - use the old expensive method
+            const [sessions] = await db.execute(
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
+                [decoded.userId]
+            );
+
+            // Find the session that matches our token
+            for (const session of sessions) {
+                const isValid = await comparePassword(token, session.token_hash);
+                if (isValid) {
+                    sessionToInvalidate = session;
+                    break;
+                }
             }
         }
 
@@ -398,7 +431,7 @@ router.post('/logout', async (req, res) => {
 
 /**
  * Middleware to verify JWT token and authenticate user
- * Checks token validity against database sessions
+ * Uses jti for fast, constant-time session lookup
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next function
@@ -416,32 +449,70 @@ const authenticateToken = (req, res, next) => {
             return sendError(res, 'FORBIDDEN', 'Invalid or expired token');
         }
 
+        // Check if token has jti (new format) or fallback to old method
+        if (!decoded.jti) {
+            // Fallback for old tokens - use the old expensive method
+            try {
+                const db = req.db;
+                const [sessions] = await db.execute(
+                    'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
+                    [decoded.userId]
+                );
+
+                if (sessions.length === 0) {
+                    return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
+                }
+
+                // Verify token hash against stored hash
+                let validSession = null;
+                for (const session of sessions) {
+                    const isValid = await comparePassword(token, session.token_hash);
+                    if (isValid) {
+                        validSession = session;
+                        break;
+                    }
+                }
+
+                if (!validSession) {
+                    return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
+                }
+
+                req.user = decoded;
+                next();
+            } catch (error) {
+                logger.error('Token validation failed (fallback)', req, { 
+                    error: error.message,
+                    stack: error.stack
+                });
+                sendError(res, 'DATABASE_ERROR', 'Token validation failed');
+            }
+            return;
+        }
+
+        // New fast method using jti
         try {
             const db = req.db;
             const [sessions] = await db.execute(
-                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = TRUE',
-                [decoded.userId]
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = TRUE',
+                [decoded.userId, decoded.jti]
             );
 
             if (sessions.length === 0) {
                 return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
             }
 
-            // Verify token hash against stored hash
-            let validSession = null;
-            for (const session of sessions) {
-                const isValid = await comparePassword(token, session.token_hash);
-                if (isValid) {
-                    validSession = session;
-                    break;
-                }
-            }
+            const session = sessions[0];
 
-            if (!validSession) {
+            // Use timing-safe comparison for the token hash
+            const computedHash = await bcrypt.hash(token, 12);
+            const isValid = await comparePassword(token, session.token_hash);
+
+            if (!isValid) {
                 return sendError(res, 'FORBIDDEN', 'Session expired or invalid');
             }
 
             req.user = decoded;
+            req.sessionId = session.id;
             next();
         } catch (error) {
             logger.error('Token validation failed', req, { 

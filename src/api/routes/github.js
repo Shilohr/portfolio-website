@@ -101,11 +101,63 @@ router.post('/sync', [
             return sendError(res, 'VALIDATION_ERROR', 'Invalid GitHub username format');
         }
 
-        // Fetch repositories from GitHub
-        const response = await axios.get(`${GITHUB_API_BASE}/users/${targetUsername}/repos`, {
-            headers
-        });
+        // Manual retry with exponential backoff
+        let response;
+        let lastError;
+        const maxRetries = 3;
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            // Create AbortController for timeout handling
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            try {
+                // Fetch repositories from GitHub with network safeguards
+                response = await axios.get(`${GITHUB_API_BASE}/users/${targetUsername}/repos`, {
+                    headers,
+                    timeout: 30000, // 30 second timeout
+                    maxBodyLength: 10 * 1024 * 1024, // 10MB max response size
+                    maxContentLength: 10 * 1024 * 1024, // 10MB max content length
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                break; // Success, exit retry loop
+                
+            } catch (error) {
+                clearTimeout(timeoutId);
+                lastError = error;
+                
+                // Don't retry on client errors (4xx) or if this is the last attempt
+                if (error.response && error.response.status >= 400 && error.response.status < 500) {
+                    break;
+                }
+                
+                // Don't retry on timeout or abort
+                if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+                    break;
+                }
+                
+                // If not the last attempt, wait before retrying
+                if (attempt < maxRetries) {
+                    const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s delays
+                    logger.warn('GitHub API request retry', req, {
+                        attempt: attempt + 1,
+                        maxRetries: maxRetries + 1,
+                        delay,
+                        error: error.message
+                    });
+                    
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
 
+        // Check if we got a successful response after retries
+        if (!response) {
+            throw lastError || new Error('Failed to fetch GitHub repositories after retries');
+        }
+        
         const repos = response.data;
         
         // Validate and sanitize repository payload
@@ -260,6 +312,11 @@ router.post('/sync', [
             githubUsername: targetUsername,
             userId: req.user ? req.user.userId : null
         });
+        
+        // Handle AbortController timeout
+        if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+            return sendError(res, 'TIMEOUT', 'GitHub API request timed out after 30 seconds');
+        }
         
         // Handle specific GitHub API errors with standardized format
         if (error.response) {
