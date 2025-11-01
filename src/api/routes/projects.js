@@ -154,36 +154,37 @@ router.get('/', [
 
             totalCount = projects.length > 0 ? [{ total: projects[0].total_count }] : [{ total: 0 }];
         } catch (error) {
-            // Fallback for JSON adapter - handle missing SQL features
+            // Fallback for JSON adapter - simplified query without window functions/GROUP_CONCAT
             logger.warn('Using fallback query for JSON adapter compatibility', req, { error: error.message });
             
-            // Get basic projects without JOINs - the JSON adapter will handle optimization
+            // Get basic projects without complex SQL features
             [projects] = await db.execute(`
                 SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
                        p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
-                       u.username as owner_username,
-                       GROUP_CONCAT(DISTINCT pt.technology ORDER BY pt.technology) as technologies,
-                       COUNT(*) OVER() as total_count
+                       u.username as owner_username
                 FROM projects p
-                LEFT JOIN project_technologies pt ON p.id = pt.project_id
                 LEFT JOIN users u ON p.user_id = u.id
                 ${whereClause}
-                GROUP BY p.id, u.username
                 ORDER BY p.order_index ASC, p.created_at DESC
                 LIMIT ? OFFSET ?
             `, [...params, limitNum, offset]);
 
-            // For JSON adapter, total_count is included in each project row
-            // Extract it properly for pagination metadata
-            if (projects.length > 0 && projects[0].hasOwnProperty('total_count')) {
-                totalCount = [{ total: projects[0].total_count }];
-            } else {
-                // Fallback: compute total count separately if window functions unavailable
-                [totalCount] = await db.execute(`
-                    SELECT COUNT(*) as total
-                    FROM projects p
-                    ${whereClause}
-                `, params);
+            // Get total count separately
+            [totalCount] = await db.execute(`
+                SELECT COUNT(*) as total
+                FROM projects p
+                ${whereClause}
+            `, params);
+
+            // Get technologies for each project separately
+            for (const project of projects) {
+                const [techRows] = await db.execute(`
+                    SELECT technology
+                    FROM project_technologies
+                    WHERE project_id = ?
+                    ORDER BY technology
+                `, [project.id]);
+                project.technologies = techRows.map(row => row.technology).join(',');
             }
         }
 

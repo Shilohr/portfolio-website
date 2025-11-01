@@ -9,7 +9,7 @@ describe('Projects Tests', () => {
 
     beforeEach(() => {
         mockDb = TestHelpers.getMockDb();
-        app = TestHelpers.createMockApp([projectsRoutes]);
+        app = TestHelpers.createMockApp([TestHelpers.createRouteConfig('/api/projects', projectsRoutes)], [], mockDb);
         TestHelpers.setupTestEnv();
     });
 

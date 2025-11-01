@@ -70,7 +70,7 @@ router.post('/sync', [
     handleValidationErrors
 ], async (req, res) => {
     const db = req.db;
-    const { force = false, username } = req.body;
+    const { force = false, username } = req.body || {};
         
         // Use provided username or default
         const targetUsername = username && username.trim() ? username.trim() : GITHUB_USERNAME;

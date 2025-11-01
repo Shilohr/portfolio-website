@@ -241,17 +241,13 @@ async save() {
         // Check if it's a SELECT query
         const trimmedSql = sql.trim().toUpperCase();
         if (trimmedSql.startsWith('SELECT') || trimmedSql.startsWith('WITH')) {
-            // For SELECT queries, return rows
+            // For SELECT queries, return rows as first element of array
             const rows = await this.executeSQL(sql, params, this._connectionContext);
             return [rows]; // Return as array to match MySQL format
         } else {
-            // For INSERT/UPDATE/DELETE queries, execute and return result
+            // For INSERT/UPDATE/DELETE queries, execute and return result as first element
             const result = await this.executeSQL(sql, params, this._connectionContext);
-            return [{
-                insertId: result.insertId || 0, 
-                affectedRows: result.affectedRows || 0,
-                changedRows: result.changedRows || 0
-            }];
+            return [result]; // Return result object as first element to match MySQL format
         }
     }
 
@@ -599,6 +595,220 @@ return data;
         return data;
     }
 
+    async executeInsert(sql, params, connectionContext = null) {
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+        
+        let record;
+        let tableName;
+        
+        // Parse INSERT INTO table_name (col1, col2) VALUES (?, ?)
+        const insertMatch = sql.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s+VALUES\s*\(([^)]+)\)/i);
+        if (insertMatch) {
+            tableName = insertMatch[1].toLowerCase();
+            const columns = insertMatch[2].split(',').map(col => col.trim());
+            const valuesPlaceholders = insertMatch[3].split(',').map(p => p.trim());
+            
+            // Validate placeholder count
+            if (valuesPlaceholders.length !== params.length) {
+                throw new Error(`Parameter count mismatch in INSERT. Expected ${valuesPlaceholders.length}, got ${params.length}`);
+            }
+            
+            // Create record object
+            record = {};
+            columns.forEach((column, index) => {
+                record[column] = params[index];
+            });
+        } else {
+            // Parse INSERT INTO table_name SET ? (object parameter)
+            const setMatch = sql.match(/INSERT\s+INTO\s+(\w+)\s+SET\s+\?/i);
+            if (setMatch) {
+                tableName = setMatch[1].toLowerCase();
+                if (params.length !== 1 || typeof params[0] !== 'object') {
+                    throw new Error(`INSERT INTO ... SET ? requires a single object parameter`);
+                }
+                record = { ...params[0] };
+            } else {
+                throw new Error(`Unsupported INSERT syntax: ${sql}`);
+            }
+        }
+        
+        // Add auto-increment ID if not present
+        if (!record.id && Array.isArray(dataSource[tableName])) {
+            const maxId = dataSource[tableName].reduce((max, item) => Math.max(max, item.id || 0), 0);
+            record.id = maxId + 1;
+        }
+        
+        // Add timestamps if applicable
+        if (record.created_at === undefined) {
+            record.created_at = new Date().toISOString();
+        }
+        if (record.updated_at === undefined) {
+            record.updated_at = new Date().toISOString();
+        }
+        
+        // Initialize table if it doesn't exist
+        if (!dataSource[tableName]) {
+            dataSource[tableName] = [];
+        }
+        
+        // Add record
+        dataSource[tableName].push(record);
+        
+        // Save if not in transaction
+        if (!connectionContext || !connectionContext.transactionInProgress) {
+            await this.save();
+        }
+        
+        return {
+            insertId: record.id || 0,
+            affectedRows: 1,
+            changedRows: 0
+        };
+    }
+    
+    async executeUpdate(sql, params, connectionContext = null) {
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+        
+        // Parse UPDATE table_name SET col1 = ?, col2 = ? WHERE condition
+        const updateMatch = sql.match(/UPDATE\s+(\w+)\s+SET\s+(.+?)\s+WHERE\s+(.+)/i);
+        if (!updateMatch) {
+            throw new Error(`Unsupported UPDATE syntax: ${sql}`);
+        }
+        
+        const tableName = updateMatch[1].toLowerCase();
+        const setClause = updateMatch[2];
+        const whereClause = updateMatch[3];
+        
+        // Parse SET clause and count parameters
+        const setAssignments = setClause.split(',').map(a => a.trim());
+        const setParamCount = setAssignments.filter(a => a.includes('?')).length;
+        
+        // Split params: SET params first, WHERE params second
+        const setParams = params.slice(0, setParamCount);
+        const whereParams = params.slice(setParamCount);
+        
+        // Parse SET clause
+        const updates = this.parseSetClause(setClause, setParams);
+        
+        // Add updated_at timestamp if not explicitly set
+        if (!updates.updated_at) {
+            updates.updated_at = new Date().toISOString();
+        }
+        
+        // Find records to update
+        let records = dataSource[tableName] || [];
+        const originalRecords = [...records];
+        
+        // Apply WHERE clause
+        records = this.applyWhereClause(records, whereClause, whereParams);
+        
+        // Update matching records
+        let affectedRows = 0;
+        records.forEach(record => {
+            Object.assign(record, updates);
+            affectedRows++;
+        });
+        
+        // Calculate changed rows (records that actually changed)
+        let changedRows = 0;
+        records.forEach((record, index) => {
+            const originalIndex = originalRecords.findIndex(r => r.id === record.id);
+            if (originalIndex >= 0) {
+                const original = originalRecords[originalIndex];
+                // Check if any field actually changed
+                const hasChanges = Object.keys(updates).some(key => original[key] !== record[key]);
+                if (hasChanges) changedRows++;
+            }
+        });
+        
+        // Save if not in transaction
+        if (!connectionContext || !connectionContext.transactionInProgress) {
+            await this.save();
+        }
+        
+        return {
+            insertId: 0,
+            affectedRows,
+            changedRows
+        };
+    }
+    
+    async executeDelete(sql, params, connectionContext = null) {
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+        
+        // Parse DELETE FROM table_name WHERE condition
+        const deleteMatch = sql.match(/DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+(.+))?/i);
+        if (!deleteMatch) {
+            throw new Error(`Unsupported DELETE syntax: ${sql}`);
+        }
+        
+        const tableName = deleteMatch[1].toLowerCase();
+        const whereClause = deleteMatch[2];
+        
+        if (!whereClause) {
+            throw new Error('DELETE without WHERE clause is not supported for safety');
+        }
+        
+        // Find records to delete
+        let records = dataSource[tableName] || [];
+        const recordsToDelete = this.applyWhereClause([...records], whereClause, params);
+        
+        // Remove records
+        const deletedIds = new Set(recordsToDelete.map(r => r.id));
+        dataSource[tableName] = records.filter(record => !deletedIds.has(record.id));
+        
+        // Save if not in transaction
+        if (!connectionContext || !connectionContext.transactionInProgress) {
+            await this.save();
+        }
+        
+        return {
+            insertId: 0,
+            affectedRows: recordsToDelete.length,
+            changedRows: recordsToDelete.length
+        };
+    }
+    
+    async executeCreate(sql, params, connectionContext = null) {
+        // Use transaction data if connection is in transaction
+        const dataSource = (connectionContext && connectionContext.transactionInProgress) 
+            ? connectionContext.transactionData 
+            : this.data;
+        
+        // Parse CREATE TABLE statements (basic support)
+        const createMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i);
+        if (createMatch) {
+            const tableName = createMatch[1].toLowerCase();
+            
+            // Initialize table if it doesn't exist
+            if (!dataSource[tableName]) {
+                dataSource[tableName] = [];
+                
+                // Save if not in transaction
+                if (!connectionContext || !connectionContext.transactionInProgress) {
+                    await this.save();
+                }
+            }
+            
+            return {
+                insertId: 0,
+                affectedRows: 0,
+                changedRows: 0
+            };
+        }
+        
+        throw new Error(`Unsupported CREATE syntax: ${sql}`);
+    }
+
     parseSetClause(setClause, params) {
         // Very basic SET clause implementation
         const updates = {};
@@ -668,17 +878,13 @@ class JSONConnection {
         try {
             const trimmedSql = sql.trim().toUpperCase();
             if (trimmedSql.startsWith('SELECT') || trimmedSql.startsWith('WITH')) {
-                // For SELECT queries, return rows
+                // For SELECT queries, return rows as first element of array
                 const rows = await this.sharedAdapter.executeSQL(sql, params, this);
                 return [rows]; // Return as array to match MySQL format
             } else {
-                // For INSERT/UPDATE/DELETE queries, execute and return result
+                // For INSERT/UPDATE/DELETE queries, execute and return result as first element
                 const result = await this.sharedAdapter.executeSQL(sql, params, this);
-                return [{
-                    insertId: result.insertId || 0, 
-                    affectedRows: result.affectedRows || 0,
-                    changedRows: result.changedRows || 0
-                }];
+                return [result]; // Return result object as first element to match MySQL format
             }
         } finally {
             this.sharedAdapter._connectionContext = null;
@@ -700,6 +906,11 @@ class JSONConnection {
             await this.rollback();
         }
         return this.sharedAdapter.close();
+    }
+    
+    // Add end method for MySQL compatibility
+    async end() {
+        return this.close();
     }
 
     async release() {
@@ -862,6 +1073,11 @@ class JSONPool {
 
     async end() {
         return this.sharedAdapter.close();
+    }
+    
+    // Add end method to pool for compatibility
+    async close() {
+        return this.end();
     }
 }
 

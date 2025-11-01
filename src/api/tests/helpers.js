@@ -9,7 +9,7 @@ class TestHelpers {
     /**
      * Create a mock Express app with routes
      */
-    static createMockApp(routes, middleware = []) {
+    static createMockApp(routes, middleware = [], mockDb = null) {
         const express = require('express');
         const cookieParser = require('cookie-parser');
         const csrf = require('csurf');
@@ -41,18 +41,23 @@ class TestHelpers {
         // Add custom middleware
         middleware.forEach(mw => app.use(mw));
         
-        // Add database middleware
+        // Add database middleware with injected mockDb or default
         app.use((req, res, next) => {
-            req.db = this.getMockDb();
+            req.db = mockDb || this.getMockDb();
             next();
         });
         
-        // Add routes
+        // Add routes with proper prefixes
         routes.forEach(route => {
             if (typeof route === 'function') {
+                // If it's just a function, mount it directly (assumes it handles its own prefix)
                 app.use(route);
             } else if (route.path && route.handler) {
+                // Mount with specified path prefix
                 app.use(route.path, route.handler);
+            } else if (route.prefix && route.router) {
+                // Mount with prefix and router (alternative format)
+                app.use(route.prefix, route.router);
             }
         });
         
@@ -62,21 +67,54 @@ class TestHelpers {
     /**
      * Get mock database object
      */
-    static getMockDb() {
+    static getMockDb(overrides = {}) {
         const mockConnection = {
             execute: jest.fn(),
             query: jest.fn(),
             beginTransaction: jest.fn(),
             commit: jest.fn(),
             rollback: jest.fn(),
-            release: jest.fn()
+            release: jest.fn(),
+            ...overrides.connection
         };
         
-        return {
+        const mockDb = {
             execute: jest.fn(),
             query: jest.fn(),
-            getConnection: jest.fn().mockResolvedValue(mockConnection)
+            getConnection: jest.fn().mockResolvedValue(mockConnection),
+            ...overrides.pool
         };
+        
+        // Set up default execute behavior to match real database adapters
+        mockDb.execute.mockImplementation((sql, params = []) => {
+            const trimmedSql = sql.trim().toUpperCase();
+            if (trimmedSql.startsWith('SELECT') || trimmedSql.startsWith('WITH')) {
+                // Return empty result set for SELECT queries by default
+                return Promise.resolve([[]]);
+            } else {
+                // Return insert result for INSERT/UPDATE/DELETE queries by default
+                return Promise.resolve([{
+                    insertId: 1,
+                    affectedRows: 1,
+                    changedRows: 0
+                }]);
+            }
+        });
+        
+        mockConnection.execute.mockImplementation((sql, params = []) => {
+            const trimmedSql = sql.trim().toUpperCase();
+            if (trimmedSql.startsWith('SELECT') || trimmedSql.startsWith('WITH')) {
+                return Promise.resolve([]);
+            } else {
+                return Promise.resolve({
+                    insertId: 1,
+                    affectedRows: 1,
+                    changedRows: 0
+                });
+            }
+        });
+        
+        return mockDb;
     }
 
     /**
@@ -199,6 +237,29 @@ class TestHelpers {
     }
 
     /**
+     * Create route configuration with proper prefix
+     */
+    static createRouteConfig(prefix, router) {
+        return {
+            prefix,
+            router
+        };
+    }
+
+    /**
+     * Create a mock app that mirrors the real server setup
+     */
+    static createMockServer(authRoutes, projectsRoutes, githubRoutes, mockDb = null, middleware = []) {
+        const routes = [
+            this.createRouteConfig('/api/auth', authRoutes),
+            this.createRouteConfig('/api/projects', projectsRoutes),
+            this.createRouteConfig('/api/github', githubRoutes)
+        ];
+        
+        return this.createMockApp(routes, middleware, mockDb);
+    }
+
+    /**
      * Create mock request object
      */
     static createMockRequest(overrides = {}) {
@@ -289,7 +350,7 @@ class TestHelpers {
         expect(response.body).toHaveProperty('error');
         expect(response.body.error).toHaveProperty('message');
         expect(response.body.error).toHaveProperty('code');
-        expect(response.body).toHaveProperty('timestamp');
+        expect(response.body.error).toHaveProperty('timestamp');
         if (expectedMessage) {
             expect(response.body.error.message).toContain(expectedMessage);
         }

@@ -37,7 +37,11 @@ const envSchema = Joi.object({
             'string.min': 'JWT_SECRET must be at least 64 characters in production',
             'any.required': 'JWT_SECRET is required in production'
         }),
-        otherwise: Joi.string().min(16).default(crypto.randomBytes(16).toString('hex'))
+        otherwise: Joi.string().min(16).default(() => {
+            // For development, use a deterministic secret if not in .env
+            // This prevents session invalidation on server restart
+            return process.env.JWT_SECRET || 'development-jwt-secret-32-chars-long';
+        })
     }),
 
     // Application Configuration

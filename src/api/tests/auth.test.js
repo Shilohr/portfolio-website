@@ -11,7 +11,7 @@ describe('Authentication Tests', () => {
 
     beforeEach(() => {
         mockDb = TestHelpers.getMockDb();
-        app = TestHelpers.createMockApp([authRoutes]);
+        app = TestHelpers.createMockApp([TestHelpers.createRouteConfig('/api/auth', authRoutes)], [], mockDb);
         TestHelpers.setupTestEnv();
     });
 
