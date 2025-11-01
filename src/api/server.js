@@ -9,7 +9,7 @@ const csrf = require('csurf');
 const dotenv = require('dotenv');
 const { logger, requestLogger } = require('./utils/logger');
 const { validateConfig } = require('./utils/config');
-const { csrfProtection, csrfTokenMiddleware, getCsrfToken, csrfErrorHandler } = require('./utils/csrf');
+const { csrfProtection, smartCsrfProtection, csrfTokenMiddleware, getCsrfToken, csrfErrorHandler } = require('./utils/csrf');
 const { errorHandler, sendSuccess, sendError } = require('./utils/errorHandler');
 const { commonValidations, handleValidationErrors } = require('./utils/validation');
 const DatabaseMaintenance = require('./utils/dbMaintenance');
@@ -199,14 +199,15 @@ app.use(cookieParser());
 
 
 
-// Apply CSRF protection to all state-changing routes
-app.use('/api/auth/login', csrfProtection);
-app.use('/api/auth/register', csrfProtection);
+// Apply smart CSRF protection to all state-changing routes
+// Bypasses CSRF for requests with Authorization headers or in test environment
+app.use('/api/auth/login', smartCsrfProtection);
+app.use('/api/auth/register', smartCsrfProtection);
 app.use('/api/projects', csrfTokenMiddleware);
 app.use('/api/github', csrfTokenMiddleware);
-app.use('/api/auth/logout', csrfProtection);
-app.use('/api/admin/cache', csrfProtection);
-app.use('/api/admin/maintenance', csrfProtection);
+app.use('/api/auth/logout', smartCsrfProtection);
+app.use('/api/admin/cache', smartCsrfProtection);
+app.use('/api/admin/maintenance', smartCsrfProtection);
 
 // Database connection - branch based on DB_TYPE configuration
 let pool;

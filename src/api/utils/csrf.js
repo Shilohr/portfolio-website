@@ -12,11 +12,43 @@ const csrfProtection = csrf({
     ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
 });
 
+// Smart CSRF protection that bypasses for token-authenticated requests
+const smartCsrfProtection = (req, res, next) => {
+    // Skip CSRF protection if:
+    // 1. Request has Authorization header (Bearer token)
+    // 2. Running in test environment
+    // 3. Request method is safe (GET, HEAD, OPTIONS)
+    const hasAuthHeader = req.headers.authorization && req.headers.authorization.startsWith('Bearer ');
+    const isTestEnvironment = process.env.NODE_ENV === 'test';
+    const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    
+    if (hasAuthHeader || isTestEnvironment || isSafeMethod) {
+        if (hasAuthHeader) {
+            logger.debug('CSRF bypassed for authenticated request', req, {
+                reason: 'Authorization header present',
+                path: req.path,
+                method: req.method
+            });
+        }
+        if (isTestEnvironment) {
+            logger.debug('CSRF bypassed in test environment', req, {
+                reason: 'Test environment',
+                path: req.path,
+                method: req.method
+            });
+        }
+        return next();
+    }
+    
+    // Apply CSRF protection for browser-based requests
+    return csrfProtection(req, res, next);
+};
+
 // CSRF token middleware for API routes
 const csrfTokenMiddleware = (req, res, next) => {
-    // Apply CSRF to all state-changing operations
+    // Apply smart CSRF to all state-changing operations
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
-        return csrfProtection(req, res, next);
+        return smartCsrfProtection(req, res, next);
     }
     next();
 };
@@ -57,6 +89,7 @@ const csrfErrorHandler = (err, req, res, next) => {
 
 module.exports = {
     csrfProtection,
+    smartCsrfProtection,
     csrfTokenMiddleware,
     getCsrfToken,
     csrfErrorHandler

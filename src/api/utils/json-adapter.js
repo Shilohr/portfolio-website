@@ -531,6 +531,86 @@ return data;
                             return record[column] == params[paramIndex]; // Use == for loose comparison
                         }
                         
+                        // Handle greater than conditions with parameter placeholders
+                        const greaterParamMatch = andCondition.match(/((?:\w+\.)?\w+)\s*>\s*\?/i);
+                        if (greaterParamMatch && params.length > 0) {
+                            const column = greaterParamMatch[1].split('.').pop(); // Strip table alias prefix
+                            const paramIndex = this.getParamIndex(whereClause, andCondition);
+                            if (paramIndex < 0 || paramIndex >= params.length) {
+                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
+                            }
+                            const recordValue = record[column];
+                            const paramValue = params[paramIndex];
+                            
+                            // Handle date comparisons
+                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                                const recordTime = new Date(recordValue).getTime();
+                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                                return recordTime > paramTime;
+                            }
+                            return recordValue > paramValue;
+                        }
+                        
+                        // Handle less than conditions with parameter placeholders
+                        const lessParamMatch = andCondition.match(/((?:\w+\.)?\w+)\s*<\s*\?/i);
+                        if (lessParamMatch && params.length > 0) {
+                            const column = lessParamMatch[1].split('.').pop(); // Strip table alias prefix
+                            const paramIndex = this.getParamIndex(whereClause, andCondition);
+                            if (paramIndex < 0 || paramIndex >= params.length) {
+                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
+                            }
+                            const recordValue = record[column];
+                            const paramValue = params[paramIndex];
+                            
+                            // Handle date comparisons
+                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                                const recordTime = new Date(recordValue).getTime();
+                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                                return recordTime < paramTime;
+                            }
+                            return recordValue < paramValue;
+                        }
+                        
+                        // Handle greater than or equal conditions with parameter placeholders
+                        const greaterEqualMatch = andCondition.match(/((?:\w+\.)?\w+)\s*>=\s*\?/i);
+                        if (greaterEqualMatch && params.length > 0) {
+                            const column = greaterEqualMatch[1].split('.').pop(); // Strip table alias prefix
+                            const paramIndex = this.getParamIndex(whereClause, andCondition);
+                            if (paramIndex < 0 || paramIndex >= params.length) {
+                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
+                            }
+                            const recordValue = record[column];
+                            const paramValue = params[paramIndex];
+                            
+                            // Handle date comparisons
+                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                                const recordTime = new Date(recordValue).getTime();
+                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                                return recordTime >= paramTime;
+                            }
+                            return recordValue >= paramValue;
+                        }
+                        
+                        // Handle less than or equal conditions with parameter placeholders
+                        const lessEqualMatch = andCondition.match(/((?:\w+\.)?\w+)\s*<=\s*\?/i);
+                        if (lessEqualMatch && params.length > 0) {
+                            const column = lessEqualMatch[1].split('.').pop(); // Strip table alias prefix
+                            const paramIndex = this.getParamIndex(whereClause, andCondition);
+                            if (paramIndex < 0 || paramIndex >= params.length) {
+                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
+                            }
+                            const recordValue = record[column];
+                            const paramValue = params[paramIndex];
+                            
+                            // Handle date comparisons
+                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                                const recordTime = new Date(recordValue).getTime();
+                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                                return recordTime <= paramTime;
+                            }
+                            return recordValue <= paramValue;
+                        }
+                        
                         // Handle greater than conditions (for expires_at > NOW())
                         const greaterMatch = andCondition.match(/((?:\w+\.)?\w+)\s*>\s*NOW\(\)/i);
                         if (greaterMatch) {

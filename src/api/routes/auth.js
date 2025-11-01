@@ -127,8 +127,8 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
             // Hash password and create user
             const passwordHash = await hashPassword(password);
             const userResult = await connection.execute(
-                'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-                [username, email, passwordHash]
+                'INSERT INTO users (username, email, password_hash, is_active, login_attempts, locked_until) VALUES (?, ?, ?, ?, ?, ?)',
+                [username, email, passwordHash, 1, 0, null]
             );
 
             // Handle both MySQL-compatible tuples and JSON adapter return shape

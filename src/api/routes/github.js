@@ -28,7 +28,7 @@ const { createTransactionManager } = require('../utils/transaction');
 const router = express.Router();
 
 const GITHUB_API_BASE = 'https://api.github.com';
-const GITHUB_USERNAME = process.env.GITHUB_USERNAME || 'Shilohr';
+const GITHUB_USERNAME = process.env.GITHUB_USERNAME || 'shilohrobinson';
 
 /**
  * Rate limiting middleware for GitHub API endpoints
@@ -83,23 +83,80 @@ router.post('/sync', [
                 userAgent: req.get('User-Agent')
             });
         
-            // Prepare headers with optional authentication
-        const headers = {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'Portfolio-Website'
-        };
+            // Validate username format using standardized sanitizer
+            if (!sanitizers.isValidGitHubUsername(targetUsername)) {
+                return sendError(res, 'VALIDATION_ERROR', 'Invalid GitHub username format');
+            }
 
-        // Add Authorization header if GitHub token is provided and valid
-        if (process.env.GITHUB_TOKEN && 
-            process.env.GITHUB_TOKEN !== 'your-github-personal-access-token' && 
-            process.env.GITHUB_TOKEN.trim() !== '') {
-            headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
-        }
-        
-        // Validate username format using standardized sanitizer
-        if (!sanitizers.isValidGitHubUsername(targetUsername)) {
-            return sendError(res, 'VALIDATION_ERROR', 'Invalid GitHub username format');
-        }
+            // Check cache if force is false
+            if (!force) {
+                const cacheKey = cache.generateKey('github_sync', { username: targetUsername });
+                const cachedData = cache.get(cacheKey);
+                
+                if (cachedData) {
+                    logger.info('Returning cached GitHub data', req, { 
+                        username: targetUsername,
+                        cacheAge: Date.now() - cachedData.timestamp
+                    });
+                    
+                    return sendSuccess(res, {
+                        syncedCount: cachedData.syncedCount,
+                        totalRepos: cachedData.totalRepos,
+                        githubUsername: targetUsername,
+                        cached: true,
+                        lastSync: cachedData.lastSync
+                    }, 'GitHub repositories retrieved from cache');
+                }
+
+                // Check database for fresh data (within 15 minutes)
+                const [freshRepos] = await db.execute(`
+                    SELECT COUNT(*) as count, MAX(last_sync) as last_sync 
+                    FROM github_repos 
+                    WHERE last_sync > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+                `);
+                
+                if (freshRepos.length > 0 && freshRepos[0].count > 0) {
+                    const lastSync = freshRepos[0].last_sync;
+                    const [repoCount] = await db.execute(
+                        'SELECT COUNT(*) as count FROM github_repos'
+                    );
+                    
+                    logger.info('Returning fresh database data', req, { 
+                        username: targetUsername,
+                        repoCount: repoCount[0].count,
+                        lastSync
+                    });
+                    
+                    const resultData = {
+                        syncedCount: repoCount[0].count,
+                        totalRepos: repoCount[0].count,
+                        githubUsername: targetUsername,
+                        cached: true,
+                        lastSync: lastSync
+                    };
+                    
+                    // Cache this result for future requests
+                    cache.set(cacheKey, {
+                        ...resultData,
+                        timestamp: Date.now()
+                    }, 'github');
+                    
+                    return sendSuccess(res, resultData, 'GitHub repositories retrieved from fresh database cache');
+                }
+            }
+
+            // Prepare headers with optional authentication
+            const headers = {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'Portfolio-Website'
+            };
+
+            // Add Authorization header if GitHub token is provided and valid
+            if (process.env.GITHUB_TOKEN && 
+                process.env.GITHUB_TOKEN !== 'your-github-personal-access-token' && 
+                process.env.GITHUB_TOKEN.trim() !== '') {
+                headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+            }
 
         // Manual retry with exponential backoff
         let response;
@@ -296,14 +353,22 @@ router.post('/sync', [
             authenticated: !!req.user
         });
 
-        // Clear GitHub cache after sync
-        cache.clear('github');
-        
-        sendSuccess(res, {
+        // Cache the sync result
+        const cacheKey = cache.generateKey('github_sync', { username: targetUsername });
+        const resultData = {
             syncedCount,
             totalRepos: sanitizedRepos.length,
-            githubUsername: targetUsername
-        }, 'GitHub repositories synchronized successfully');
+            githubUsername: targetUsername,
+            cached: false,
+            lastSync: new Date().toISOString(),
+            timestamp: Date.now()
+        };
+        
+        // Clear GitHub cache first, then set our sync cache
+        cache.clear('github');
+        cache.set(cacheKey, resultData, 'github');
+        
+        sendSuccess(res, resultData, 'GitHub repositories synchronized successfully');
 
     } catch (error) {
         logger.error('GitHub sync failed', req, { 
@@ -425,13 +490,16 @@ async (req, res) => {
             SELECT COUNT(*) as total FROM github_repos ${whereClause}
         `, params);
 
+        // Safe access to totalCount with fallback to 0
+        const total = totalCount && totalCount.length > 0 && totalCount[0] ? totalCount[0].total : 0;
+
         sendSuccess(res, {
             repositories: repos,
             pagination: {
                 page: pageNum,
                 limit: limitNum,
-                total: totalCount[0].total,
-                pages: Math.ceil(totalCount[0].total / limitNum)
+                total: total,
+                pages: Math.ceil(total / limitNum)
             }
         }, 'Repositories fetched successfully');
 

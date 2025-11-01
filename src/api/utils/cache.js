@@ -137,10 +137,11 @@ class CacheManager {
         }
         
         // Only allow simple glob-like patterns for safety
-        // Convert simple glob patterns to safe regex
+        // First escape all regex metacharacters except glob characters
         let safePattern = pattern
-            .replace(/\*/g, '.*')  // Convert * to .*
-            .replace(/\?/g, '.');  // Convert ? to .
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')  // Escape all regex metacharacters
+            .replace(/\\\*/g, '.*')  // Convert escaped * to .*
+            .replace(/\\\?/g, '.');  // Convert escaped ? to .
         
         // Block potentially dangerous regex patterns
         const dangerousPatterns = [

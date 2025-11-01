@@ -1,5 +1,6 @@
 const express = require('express');
 const { authenticateToken } = require('./auth');
+const { body, param, query } = require('express-validator');
 const { logger } = require('../utils/logger');
 const { sendError, sendSuccess, createErrorResponse } = require('../utils/errorHandler');
 const { commonValidations, handleValidationErrors, sanitizers, customValidations } = require('../utils/validation');
@@ -95,6 +96,12 @@ router.get('/', [
     commonValidations.page,
     commonValidations.limit,
     customValidations.validateFilterParams,
+    query('search')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 100 })
+        .withMessage('Search term must be 1-100 characters')
+        .escape(),
     handleValidationErrors
 ], cache.middleware('projects', (req) => {
     return cache.generateKey('projects', { 
@@ -104,7 +111,7 @@ router.get('/', [
 }), async (req, res) => {
     try {
         const db = req.db;
-        const { page = 1, limit = 20, featured, status = 'active', user_id } = req.query;
+        const { page = 1, limit = 20, featured, status = 'active', user_id, search } = req.query;
         
         // Enhanced input validation for pagination parameters
         if (page !== undefined && (isNaN(page) || page < 1 || page > 1000)) {
@@ -136,6 +143,16 @@ router.get('/', [
         if (user_id && /^\d+$/.test(user_id)) {
             whereClause += ' AND p.user_id = ?';
             params.push(user_id);
+        }
+        
+        // Search functionality - search in title and description
+        if (search && search.trim()) {
+            const sanitizedSearch = sanitizers.sanitizeString(search, 100);
+            if (sanitizedSearch) {
+                whereClause += ' AND (p.title LIKE ? OR p.description LIKE ?)';
+                const searchPattern = `%${sanitizedSearch}%`;
+                params.push(searchPattern, searchPattern);
+            }
         }
 
         let projects, totalCount;
