@@ -2,6 +2,8 @@ const request = require('supertest');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
+const csrf = require('csurf');
 
 // Import the actual server
 const express = require('express');
@@ -22,9 +24,31 @@ describe('Authentication Integration Tests', () => {
       charset: 'utf8mb4'
     });
 
+    // CSRF protection configuration (same as production)
+    const csrfProtection = csrf({
+      cookie: {
+        httpOnly: true,
+        secure: false, // false for testing
+        sameSite: 'lax'
+      },
+      ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
+    });
+
     // Setup Express app with real auth routes
     app = express();
     app.use(express.json());
+    app.use(cookieParser());
+    
+    // Add CSRF token endpoint for testing
+    app.get('/api/csrf-token', csrfProtection, (req, res) => {
+      res.json({ csrfToken: req.csrfToken() });
+    });
+
+    // Apply CSRF protection to auth endpoints (same as production)
+    app.use('/api/auth/login', csrfProtection);
+    app.use('/api/auth/register', csrfProtection);
+    app.use('/api/auth/logout', csrfProtection);
+    
     app.use((req, res, next) => {
       req.db = testDb;
       next();
@@ -37,6 +61,18 @@ describe('Authentication Integration Tests', () => {
       await testDb.end();
     }
   });
+
+  // Helper function to get CSRF token
+  async function getCsrfToken() {
+    const response = await request(app)
+      .get('/api/csrf-token')
+      .expect(200);
+    
+    return {
+      token: response.body.csrfToken,
+      cookies: response.headers['set-cookie']
+    };
+  }
 
   beforeEach(async () => {
     // Clean up database before each test
@@ -55,13 +91,16 @@ describe('Authentication Integration Tests', () => {
       };
 
       // Step 1: Register user
+      const csrfData = await getCsrfToken();
       const registerResponse = await request(app)
         .post('/api/auth/register')
+        .set('Cookie', csrfData.cookies)
+        .set('X-CSRF-Token', csrfData.token)
         .send(userData);
 
       expect(registerResponse.status).toBe(201);
       expect(registerResponse.body.message).toBe('User registered successfully');
-      expect(registerResponse.body.userId).toBeDefined();
+      expect(registerResponse.body.data.userId).toBeDefined();
 
       // Verify user was created in database
       const [users] = await testDb.execute(
@@ -73,18 +112,21 @@ describe('Authentication Integration Tests', () => {
       expect(users[0].is_active).toBe(true);
 
       // Step 2: Login with registered user
+      const loginCsrfData = await getCsrfToken();
       const loginResponse = await request(app)
         .post('/api/auth/login')
+        .set('Cookie', loginCsrfData.cookies)
+        .set('X-CSRF-Token', loginCsrfData.token)
         .send({
           username: userData.username,
           password: userData.password
         });
 
       expect(loginResponse.status).toBe(200);
-      expect(loginResponse.body.token).toBeDefined();
-      expect(loginResponse.body.user.username).toBe(userData.username);
+      expect(loginResponse.body.data.token).toBeDefined();
+      expect(loginResponse.body.data.user.username).toBe(userData.username);
 
-      const token = loginResponse.body.token;
+      const token = loginResponse.body.data.token;
 
       // Step 3: Access protected profile endpoint
       const profileResponse = await request(app)
@@ -92,12 +134,15 @@ describe('Authentication Integration Tests', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(profileResponse.status).toBe(200);
-      expect(profileResponse.body.user.username).toBe(userData.username);
-      expect(profileResponse.body.user.email).toBe(userData.email);
+      expect(profileResponse.body.data.user.username).toBe(userData.username);
+      expect(profileResponse.body.data.user.email).toBe(userData.email);
 
       // Step 4: Logout
+      const logoutCsrfData = await getCsrfToken();
       const logoutResponse = await request(app)
         .post('/api/auth/logout')
+        .set('Cookie', logoutCsrfData.cookies)
+        .set('X-CSRF-Token', logoutCsrfData.token)
         .set('Authorization', `Bearer ${token}`);
 
       expect(logoutResponse.status).toBe(200);
@@ -121,8 +166,11 @@ describe('Authentication Integration Tests', () => {
 
       // Attempt multiple failed logins
       for (let i = 0; i < 5; i++) {
+        const csrfData = await getCsrfToken();
         const response = await request(app)
           .post('/api/auth/login')
+          .set('Cookie', csrfData.cookies)
+          .set('X-CSRF-Token', csrfData.token)
           .send({
             username: 'locktestuser',
             password: 'wrongPassword'
@@ -130,7 +178,7 @@ describe('Authentication Integration Tests', () => {
 
         if (i < 4) {
           expect(response.status).toBe(401);
-          expect(response.body.error).toBe('Invalid credentials');
+          expect(response.body.error.message).toBe('Invalid credentials');
         } else {
           expect(response.status).toBe(401);
         }
@@ -145,15 +193,18 @@ describe('Authentication Integration Tests', () => {
       expect(users[0].locked_until).toBeGreaterThan(Date.now());
 
       // Attempt login with correct password - should still fail due to lock
+      const lockedCsrfData = await getCsrfToken();
       const lockedResponse = await request(app)
         .post('/api/auth/login')
+        .set('Cookie', lockedCsrfData.cookies)
+        .set('X-CSRF-Token', lockedCsrfData.token)
         .send({
           username: 'locktestuser',
           password: 'correctPassword'
         });
 
       expect(lockedResponse.status).toBe(423);
-      expect(lockedResponse.body.error).toContain('Account temporarily locked');
+      expect(lockedResponse.body.error.message).toContain('Account temporarily locked');
     });
 
     it('should handle concurrent sessions correctly', async () => {
@@ -167,15 +218,18 @@ describe('Authentication Integration Tests', () => {
       // Create multiple sessions
       const sessions = [];
       for (let i = 0; i < 3; i++) {
+        const csrfData = await getCsrfToken();
         const response = await request(app)
           .post('/api/auth/login')
+          .set('Cookie', csrfData.cookies)
+          .set('X-CSRF-Token', csrfData.token)
           .send({
             username: 'sessionuser',
             password: 'Password123'
           });
 
         expect(response.status).toBe(200);
-        sessions.push(response.body.token);
+        sessions.push(response.body.data.token);
       }
 
       // Verify all sessions are active
@@ -186,8 +240,11 @@ describe('Authentication Integration Tests', () => {
       expect(activeSessions[0].count).toBe(3);
 
       // Logout one session
+      const logoutCsrfData = await getCsrfToken();
       const logoutResponse = await request(app)
         .post('/api/auth/logout')
+        .set('Cookie', logoutCsrfData.cookies)
+        .set('X-CSRF-Token', logoutCsrfData.token)
         .set('Authorization', `Bearer ${sessions[0]}`);
 
       expect(logoutResponse.status).toBe(200);
@@ -226,8 +283,11 @@ describe('Authentication Integration Tests', () => {
       };
 
       // Register user
+      const registerCsrfData = await getCsrfToken();
       await request(app)
         .post('/api/auth/register')
+        .set('Cookie', registerCsrfData.cookies)
+        .set('X-CSRF-Token', registerCsrfData.token)
         .send(userData);
 
       // Check registration audit
@@ -239,8 +299,11 @@ describe('Authentication Integration Tests', () => {
       expect(registerAudit[0].action).toBe('USER_REGISTERED');
 
       // Login user
+      const loginCsrfData = await getCsrfToken();
       const loginResponse = await request(app)
         .post('/api/auth/login')
+        .set('Cookie', loginCsrfData.cookies)
+        .set('X-CSRF-Token', loginCsrfData.token)
         .send({
           username: userData.username,
           password: userData.password
@@ -255,8 +318,11 @@ describe('Authentication Integration Tests', () => {
       expect(loginAudit[0].action).toBe('USER_LOGIN');
 
       // Logout user
+      const logoutCsrfData = await getCsrfToken();
       await request(app)
         .post('/api/auth/logout')
+        .set('Cookie', logoutCsrfData.cookies)
+        .set('X-CSRF-Token', logoutCsrfData.token)
         .set('Authorization', `Bearer ${loginResponse.body.token}`);
 
       // Check logout audit
@@ -269,9 +335,29 @@ describe('Authentication Integration Tests', () => {
     });
 
     it('should handle database connection failures gracefully', async () => {
+      // CSRF protection for test app
+      const csrfProtection = csrf({
+        cookie: {
+          httpOnly: true,
+          secure: false,
+          sameSite: 'lax'
+        },
+        ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
+      });
+
       // Create a new app with broken database connection
       const brokenApp = express();
       brokenApp.use(express.json());
+      brokenApp.use(cookieParser());
+      
+      // Add CSRF token endpoint
+      brokenApp.get('/api/csrf-token', csrfProtection, (req, res) => {
+        res.json({ csrfToken: req.csrfToken() });
+      });
+
+      // Apply CSRF protection
+      brokenApp.use('/api/auth/login', csrfProtection);
+      
       brokenApp.use((req, res, next) => {
         req.db = {
           execute: jest.fn().mockRejectedValue(new Error('Connection failed'))
@@ -280,8 +366,15 @@ describe('Authentication Integration Tests', () => {
       });
       brokenApp.use('/api/auth', authRoutes);
 
+      // Get CSRF token first
+      const csrfData = await request(brokenApp)
+        .get('/api/csrf-token')
+        .expect(200);
+
       const response = await request(brokenApp)
         .post('/api/auth/login')
+        .set('Cookie', csrfData.headers['set-cookie'])
+        .set('X-CSRF-Token', csrfData.body.csrfToken)
         .send({
           username: 'testuser',
           password: 'password'
@@ -300,8 +393,11 @@ describe('Authentication Integration Tests', () => {
         password: 'Password123'
       };
 
+      const csrfData = await getCsrfToken();
       const response = await request(app)
         .post('/api/auth/register')
+        .set('Cookie', csrfData.cookies)
+        .set('X-CSRF-Token', csrfData.token)
         .send(userData);
 
       expect(response.status).toBe(201);
@@ -330,8 +426,11 @@ describe('Authentication Integration Tests', () => {
         password: "password'; DROP TABLE users; --"
       };
 
+      const csrfData = await getCsrfToken();
       const response = await request(app)
         .post('/api/auth/login')
+        .set('Cookie', csrfData.cookies)
+        .set('X-CSRF-Token', csrfData.token)
         .send(maliciousInput);
 
       expect(response.status).toBe(401);
@@ -350,8 +449,11 @@ describe('Authentication Integration Tests', () => {
       // Make multiple rapid requests
       const responses = [];
       for (let i = 0; i < 25; i++) {
+        const csrfData = await getCsrfToken();
         const response = await request(app)
           .post('/api/auth/login')
+          .set('Cookie', csrfData.cookies)
+          .set('X-CSRF-Token', csrfData.token)
           .send(loginData);
         responses.push(response);
       }
@@ -372,8 +474,11 @@ describe('Authentication Integration Tests', () => {
         ['jwtuser', 'jwt@example.com', passwordHash]
       );
 
+      const csrfData = await getCsrfToken();
       const loginResponse = await request(app)
         .post('/api/auth/login')
+        .set('Cookie', csrfData.cookies)
+        .set('X-CSRF-Token', csrfData.token)
         .send({
           username: 'jwtuser',
           password: 'Password123'

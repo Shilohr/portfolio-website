@@ -74,7 +74,7 @@ describe('Projects Integration Tests', () => {
 
       expect(createResponse.status).toBe(201);
       expect(createResponse.body.message).toBe('Project created successfully');
-      const projectId = createResponse.body.projectId;
+      const projectId = createResponse.body.data.projectId;
       expect(projectId).toBeDefined();
 
       // Verify project was created in database
@@ -98,16 +98,16 @@ describe('Projects Integration Tests', () => {
         .get('/api/projects');
 
       expect(listResponse.status).toBe(200);
-      expect(listResponse.body.projects).toHaveLength(1);
-      expect(listResponse.body.projects[0].title).toBe(projectData.title);
-      expect(listResponse.body.projects[0].technologies).toEqual(expect.arrayContaining(projectData.technologies));
+      expect(listResponse.body.data.projects).toHaveLength(1);
+      expect(listResponse.body.data.projects[0].title).toBe(projectData.title);
+      expect(listResponse.body.data.projects[0].technologies).toEqual(expect.arrayContaining(projectData.technologies));
 
       // Step 3: Read single project
       const singleResponse = await request(app)
         .get(`/api/projects/${projectId}`);
 
       expect(singleResponse.status).toBe(200);
-      expect(singleResponse.body.project.title).toBe(projectData.title);
+      expect(singleResponse.body.data.project.title).toBe(projectData.title);
 
       // Step 4: Update project
       const updateData = {
@@ -207,8 +207,8 @@ describe('Projects Integration Tests', () => {
         .query({ status: 'active' });
 
       expect(response.status).toBe(200);
-      expect(response.body.projects).toHaveLength(3);
-      response.body.projects.forEach(project => {
+      expect(response.body.data.projects).toHaveLength(3);
+      response.body.data.projects.forEach(project => {
         expect(project.status).toBe('active');
       });
     });
@@ -219,8 +219,8 @@ describe('Projects Integration Tests', () => {
         .query({ featured: 'true' });
 
       expect(response.status).toBe(200);
-      expect(response.body.projects).toHaveLength(2);
-      response.body.projects.forEach(project => {
+      expect(response.body.data.projects).toHaveLength(2);
+      response.body.data.projects.forEach(project => {
         expect(project.featured).toBe(true);
       });
     });
@@ -231,11 +231,11 @@ describe('Projects Integration Tests', () => {
         .query({ page: 1, limit: 2 });
 
       expect(response.status).toBe(200);
-      expect(response.body.projects).toHaveLength(2);
-      expect(response.body.pagination.page).toBe(1);
-      expect(response.body.pagination.limit).toBe(2);
-      expect(response.body.pagination.total).toBe(3); // Only active projects by default
-      expect(response.body.pagination.pages).toBe(2);
+      expect(response.body.data.projects).toHaveLength(2);
+      expect(response.body.data.pagination.page).toBe(1);
+      expect(response.body.data.pagination.limit).toBe(2);
+      expect(response.body.data.pagination.total).toBe(3); // Only active projects by default
+      expect(response.body.data.pagination.pages).toBe(2);
     });
 
     it('should combine multiple filters', async () => {
@@ -244,9 +244,9 @@ describe('Projects Integration Tests', () => {
         .query({ status: 'active', featured: 'true', page: 1, limit: 1 });
 
       expect(response.status).toBe(200);
-      expect(response.body.projects).toHaveLength(1);
-      expect(response.body.projects[0].featured).toBe(true);
-      expect(response.body.projects[0].status).toBe('active');
+      expect(response.body.data.projects).toHaveLength(1);
+      expect(response.body.data.projects[0].featured).toBe(true);
+      expect(response.body.data.projects[0].status).toBe('active');
     });
   });
 
@@ -313,7 +313,7 @@ describe('Projects Integration Tests', () => {
         .send(projectData);
 
       expect(response.status).toBe(201);
-      const projectId = response.body.projectId;
+      const projectId = response.body.data.projectId;
 
       // Verify all technologies were created
       const [technologies] = await testDb.execute(
@@ -428,7 +428,7 @@ describe('Projects Integration Tests', () => {
         .get('/api/projects');
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Failed to fetch projects');
+      expect(response.body.error.message).toBe('Failed to fetch projects');
     });
 
     it('should handle concurrent requests correctly', async () => {
@@ -450,7 +450,7 @@ describe('Projects Integration Tests', () => {
       // All should succeed
       responses.forEach(response => {
         expect(response.status).toBe(201);
-        expect(response.body.projectId).toBeDefined();
+        expect(response.body.data.projectId).toBeDefined();
       });
 
       // Verify all projects were created

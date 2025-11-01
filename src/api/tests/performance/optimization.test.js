@@ -59,8 +59,14 @@ describe('Performance Optimization Tests', () => {
                 .expect(200);
             
             // Create a project (should invalidate cache)
+            const csrfResponse = await request(app)
+                .get('/api/csrf-token')
+                .expect(200);
+            
             const authResponse = await request(app)
                 .post('/api/auth/login')
+                .set('Cookie', csrfResponse.headers['set-cookie'])
+                .set('X-CSRF-Token', csrfResponse.body.csrfToken)
                 .send({
                     username: 'testuser',
                     password: 'testpassword'

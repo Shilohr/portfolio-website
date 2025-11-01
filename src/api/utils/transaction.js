@@ -88,7 +88,8 @@ class TransactionManager {
                 const { query, params, name } = operation;
                 
                 try {
-                    const [result] = await existingConnection.execute(query, params);
+                    const executeResult = await existingConnection.execute(query, params);
+                    const result = Array.isArray(executeResult) ? executeResult[0] : executeResult;
                     results.push({ name, success: true, result });
                     
                     logger.debug('Batch operation completed', null, { 
@@ -113,7 +114,8 @@ class TransactionManager {
                     const { query, params, name } = operation;
                     
                     try {
-                        const [result] = await connection.execute(query, params);
+                        const executeResult = await connection.execute(query, params);
+                        const result = Array.isArray(executeResult) ? executeResult[0] : executeResult;
                         results.push({ name, success: true, result });
                         
                         logger.debug('Batch operation completed', null, { 

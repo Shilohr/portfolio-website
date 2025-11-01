@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const request = require('supertest');
 
 /**
  * Test utilities and helper functions
@@ -10,9 +11,32 @@ class TestHelpers {
      */
     static createMockApp(routes, middleware = []) {
         const express = require('express');
+        const cookieParser = require('cookie-parser');
+        const csrf = require('csurf');
         const app = express();
         
         app.use(express.json());
+        app.use(cookieParser());
+        
+        // CSRF protection for testing
+        const csrfProtection = csrf({
+            cookie: {
+                httpOnly: true,
+                secure: false, // false for testing
+                sameSite: 'lax'
+            },
+            ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
+        });
+
+        // Add CSRF token endpoint
+        app.get('/api/csrf-token', csrfProtection, (req, res) => {
+            res.json({ csrfToken: req.csrfToken() });
+        });
+
+        // Apply CSRF protection to auth endpoints
+        app.use('/api/auth/login', csrfProtection);
+        app.use('/api/auth/register', csrfProtection);
+        app.use('/api/auth/logout', csrfProtection);
         
         // Add custom middleware
         middleware.forEach(mw => app.use(mw));
@@ -261,9 +285,13 @@ class TestHelpers {
      */
     static validateErrorResponse(response, expectedStatus, expectedMessage) {
         expect(response.status).toBe(expectedStatus);
+        expect(response.body).toHaveProperty('success', false);
         expect(response.body).toHaveProperty('error');
+        expect(response.body.error).toHaveProperty('message');
+        expect(response.body.error).toHaveProperty('code');
+        expect(response.body).toHaveProperty('timestamp');
         if (expectedMessage) {
-            expect(response.body.error).toContain(expectedMessage);
+            expect(response.body.error.message).toContain(expectedMessage);
         }
     }
 
@@ -272,6 +300,9 @@ class TestHelpers {
      */
     static validateSuccessResponse(response, expectedStatus = 200) {
         expect(response.status).toBe(expectedStatus);
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body).toHaveProperty('message');
+        expect(response.body).toHaveProperty('timestamp');
         expect(response.body).not.toHaveProperty('error');
     }
 
@@ -279,8 +310,8 @@ class TestHelpers {
      * Validate pagination structure
      */
     static validatePagination(response, expectedPage = 1, expectedLimit = 20) {
-        expect(response.body).toHaveProperty('pagination');
-        const { pagination } = response.body;
+        expect(response.body.data).toHaveProperty('pagination');
+        const { pagination } = response.body.data;
         expect(pagination).toHaveProperty('page');
         expect(pagination).toHaveProperty('limit');
         expect(pagination).toHaveProperty('total');
@@ -297,16 +328,26 @@ class TestHelpers {
         jest.restoreAllMocks();
     }
 
+/**
+     * Get CSRF token for testing
+     */
+    static async getCsrfToken(app) {
+        const response = await request(app)
+            .get('/api/csrf-token')
+            .expect(200);
+        
+        return {
+            token: response.body.csrfToken,
+            cookies: response.headers['set-cookie']
+        };
+    }
+
     /**
      * Setup test environment
      */
     static setupTestEnv() {
         process.env.NODE_ENV = 'test';
         process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only';
-        process.env.DB_HOST = 'localhost';
-        process.env.DB_USER = 'test';
-        process.env.DB_PASSWORD = 'test';
-        process.env.DB_NAME = 'test_db';
     }
 
     /**

@@ -173,7 +173,18 @@ router.get('/', [
                 LIMIT ? OFFSET ?
             `, [...params, limitNum, offset]);
 
-            totalCount = projects.length > 0 ? [{ total: projects[0].total_count }] : [{ total: 0 }];
+            // For JSON adapter, total_count is included in each project row
+            // Extract it properly for pagination metadata
+            if (projects.length > 0 && projects[0].hasOwnProperty('total_count')) {
+                totalCount = [{ total: projects[0].total_count }];
+            } else {
+                // Fallback: compute total count separately if window functions unavailable
+                [totalCount] = await db.execute(`
+                    SELECT COUNT(*) as total
+                    FROM projects p
+                    ${whereClause}
+                `, params);
+            }
         }
 
         // Parse technologies and remove total_count from response
@@ -189,11 +200,8 @@ router.get('/', [
             };
         });
 
-        // Ensure total_count is properly set for JSON adapter fallback
-        if (projects.length > 0 && !projects[0].hasOwnProperty('total_count')) {
-            // In JSON adapter mode, total_count comes from separate query
-            // Make sure we use the totalCount from the separate count query
-        }
+        // Ensure total_count is properly handled for both SQL and JSON adapter modes
+        // The totalCount variable already contains the correct total count from above
 
         sendSuccess(res, {
             projects: projectsWithTech,

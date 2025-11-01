@@ -162,8 +162,8 @@ describe('GitHub Integration Tests', () => {
 
                 TestHelpers.validateSuccessResponse(response, 200);
                 expect(response.body.message).toBe('GitHub repositories synchronized successfully');
-                expect(response.body.syncedCount).toBe(2);
-                expect(response.body.totalRepos).toBe(2);
+                expect(response.body.data.syncedCount).toBe(2);
+                expect(response.body.data.totalRepos).toBe(2);
 
                 // Verify GitHub API was called correctly
                 expect(axios.get).toHaveBeenCalledWith(
@@ -210,7 +210,7 @@ describe('GitHub Integration Tests', () => {
                     .set('Authorization', `Bearer ${token}`);
 
                 TestHelpers.validateSuccessResponse(response, 200);
-                expect(response.body.syncedCount).toBe(1);
+                expect(response.body.data.syncedCount).toBe(1);
             });
 
             test('should require authentication for sync', async () => {
@@ -239,7 +239,7 @@ describe('GitHub Integration Tests', () => {
                     .set('Authorization', `Bearer ${token}`);
 
                 TestHelpers.validateErrorResponse(response, 429, 'rate limit exceeded');
-                expect(response.body.resetTime).toBeDefined();
+                expect(response.body.error.details.resetTime).toBeDefined();
             });
 
             test('should handle GitHub API authentication errors', async () => {
@@ -305,8 +305,8 @@ describe('GitHub Integration Tests', () => {
                     .get('/api/github/repos');
 
                 TestHelpers.validateSuccessResponse(response, 200);
-                expect(response.body.repositories).toBeDefined();
-                expect(response.body.repositories).toHaveLength(2);
+                expect(response.body.data.repositories).toBeDefined();
+                expect(response.body.data.repositories).toHaveLength(2);
                 TestHelpers.validatePagination(response, 1, 20);
             });
 
@@ -395,8 +395,8 @@ describe('GitHub Integration Tests', () => {
                     .get('/api/github/repos/123456');
 
                 TestHelpers.validateSuccessResponse(response, 200);
-                expect(response.body.repository).toBeDefined();
-                expect(response.body.repository.repo_id).toBe('123456');
+                expect(response.body.data.repository).toBeDefined();
+                expect(response.body.data.repository.repo_id).toBe('123456');
             });
 
             test('should return 404 for non-existent repository', async () => {
@@ -572,7 +572,7 @@ describe('Security Tests', () => {
             const responseTime = endTime - startTime;
 
             TestHelpers.validateSuccessResponse(response, 200);
-            expect(response.body.repositories).toHaveLength(50);
+            expect(response.body.data.repositories).toHaveLength(50);
             expect(responseTime).toBeLessThan(1000); // Should complete within 1 second
         });
 
@@ -692,8 +692,8 @@ describe('Security Tests', () => {
         .get('/api/github/repos/123456');
 
       TestHelpers.validateSuccessResponse(response, 200);
-      expect(response.body.repository.name).toBe('test-repo');
-      expect(response.body.repository.topics).toEqual(['node', 'express']);
+      expect(response.body.data.repository.name).toBe('test-repo');
+      expect(response.body.data.repository.topics).toEqual(['node', 'express']);
     });
 
     it('should return 404 for non-existent repository', async () => {
@@ -722,7 +722,7 @@ describe('Security Tests', () => {
         .get('/api/github/repos/123456');
 
       TestHelpers.validateSuccessResponse(response, 200);
-      expect(response.body.repository.topics).toEqual([]);
+      expect(response.body.data.repository.topics).toEqual([]);
     });
 
     it('should validate repository ID parameter', async () => {

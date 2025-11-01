@@ -94,13 +94,16 @@ describe('Authentication Tests', () => {
                     .mockResolvedValueOnce([{ insertId: 1 }]) // Insert user
                     .mockResolvedValueOnce([]); // Audit log
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/register')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(userData);
 
                 TestHelpers.validateSuccessResponse(response, 201);
                 expect(response.body.message).toBe('User registered successfully');
-                expect(response.body.userId).toBe(1);
+                expect(response.body.data.userId).toBe(1);
             });
 
             test('should reject registration with invalid data', async () => {
@@ -110,12 +113,15 @@ describe('Authentication Tests', () => {
                     password: '123' // Too short
                 };
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/register')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(invalidData);
 
                 TestHelpers.validateErrorResponse(response, 400);
-                expect(response.body.errors).toBeDefined();
+                expect(response.body.error.details.validationErrors).toBeDefined();
             });
 
             test('should reject duplicate username', async () => {
@@ -127,8 +133,11 @@ describe('Authentication Tests', () => {
 
                 mockDb.execute.mockResolvedValueOnce([[{ id: 1 }]]); // Existing user found
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/register')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(userData);
 
                 TestHelpers.validateErrorResponse(response, 409, 'already exists');
@@ -153,14 +162,17 @@ describe('Authentication Tests', () => {
                     .mockResolvedValueOnce([{ insertId: 1 }]) // Create session
                     .mockResolvedValueOnce([]); // Audit log
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/login')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(loginData);
 
                 TestHelpers.validateSuccessResponse(response, 200);
                 expect(response.body.message).toBe('Login successful');
-                expect(response.body.token).toBeDefined();
-                expect(response.body.user).toBeDefined();
+                expect(response.body.data.token).toBeDefined();
+                expect(response.body.data.user).toBeDefined();
             });
 
             test('should reject login with invalid credentials', async () => {
@@ -179,8 +191,11 @@ describe('Authentication Tests', () => {
                     .mockResolvedValueOnce([[mockUser]]) // Get user
                     .mockResolvedValueOnce([]); // Update login attempts
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/login')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(loginData);
 
                 TestHelpers.validateErrorResponse(response, 401, 'Invalid credentials');
@@ -198,8 +213,11 @@ describe('Authentication Tests', () => {
 
                 mockDb.execute.mockResolvedValueOnce([[lockedUser]]);
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/login')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(loginData);
 
                 TestHelpers.validateErrorResponse(response, 423, 'locked');
@@ -213,8 +231,11 @@ describe('Authentication Tests', () => {
 
                 mockDb.execute.mockResolvedValueOnce([[]]); // No user found
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/login')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(loginData);
 
                 TestHelpers.validateErrorResponse(response, 401, 'Invalid credentials');
@@ -230,8 +251,11 @@ describe('Authentication Tests', () => {
                     .mockResolvedValueOnce([[{ id: 1 }]]) // Session found
                     .mockResolvedValueOnce([]); // Audit log
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/logout')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .set('Authorization', `Bearer ${token}`);
 
                 TestHelpers.validateSuccessResponse(response, 200);
@@ -258,8 +282,8 @@ describe('Authentication Tests', () => {
                     .set('Authorization', `Bearer ${token}`);
 
                 TestHelpers.validateSuccessResponse(response, 200);
-                expect(response.body.user).toBeDefined();
-                expect(response.body.user.id).toBe(mockUser.id);
+                expect(response.body.data.user).toBeDefined();
+                expect(response.body.data.user.id).toBe(mockUser.id);
             });
 
             test('should reject profile request without token', async () => {
@@ -283,8 +307,11 @@ describe('Authentication Tests', () => {
 
                 mockDb.execute.mockResolvedValueOnce([[]]); // No user found
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/login')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(loginData);
 
                 TestHelpers.validateErrorResponse(response, 401);
@@ -307,8 +334,11 @@ describe('Authentication Tests', () => {
 
                 mockDb.execute.mockResolvedValueOnce([[]]); // No existing user
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/register')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(userData);
 
                 // Should not reach database insertion due to validation
@@ -328,8 +358,11 @@ describe('Authentication Tests', () => {
 
                 mockDb.execute.mockResolvedValueOnce([[]]); // No existing user
 
+                const csrfData = await TestHelpers.getCsrfToken(app);
                 const response = await request(app)
                     .post('/api/auth/register')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
                     .send(userData);
 
                 // Should fail validation due to script tags in username
@@ -355,9 +388,12 @@ describe('Authentication Tests', () => {
                         password: password
                     };
 
-                    const response = await request(app)
-                        .post('/api/auth/register')
-                        .send(userData);
+const csrfData = await TestHelpers.getCsrfToken(app);
+                const response = await request(app)
+                    .post('/api/auth/register')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
+                    .send(userData);
 
                     expect(response.status).toBe(400);
                 }
@@ -384,9 +420,12 @@ describe('Authentication Tests', () => {
                 for (let i = 0; i < 5; i++) {
                     mockDb.execute.mockResolvedValueOnce([[]]); // No user found
                     
-                    const response = await request(app)
-                        .post('/api/auth/login')
-                        .send(loginData);
+const csrfData = await TestHelpers.getCsrfToken(app);
+                const response = await request(app)
+                    .post('/api/auth/login')
+                    .set('Cookie', csrfData.cookies)
+                    .set('X-CSRF-Token', csrfData.token)
+                    .send(loginData);
 
                     if (i < 4) {
                         TestHelpers.validateErrorResponse(response, 401);

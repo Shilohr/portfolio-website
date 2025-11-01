@@ -127,7 +127,8 @@ class ApiModule {
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
-            throw new ApiError(error.message || `HTTP ${response.status}`, response.status, error);
+            const errorMessage = error.error?.message || error.message || `HTTP ${response.status}`;
+            throw new ApiError(errorMessage, response.status, error);
         }
 
         return response;
@@ -139,12 +140,14 @@ class ApiModule {
         const endpoint = `/projects${queryString ? '?' + queryString : ''}`;
         
         const response = await this.request(endpoint);
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     async getProject(id) {
         const response = await this.request(`/projects/${id}`);
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     async createProject(projectData) {
@@ -152,7 +155,8 @@ class ApiModule {
             method: 'POST',
             body: JSON.stringify(projectData)
         });
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     async updateProject(id, projectData) {
@@ -160,14 +164,16 @@ class ApiModule {
             method: 'PUT',
             body: JSON.stringify(projectData)
         });
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     async deleteProject(id) {
         const response = await this.request(`/projects/${id}`, {
             method: 'DELETE'
         });
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     // GitHub API
@@ -176,14 +182,16 @@ class ApiModule {
         const endpoint = `/github/repos${queryString ? '?' + queryString : ''}`;
         
         const response = await this.request(endpoint);
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     async syncGitHubRepos() {
         const response = await this.request('/github/sync', {
             method: 'POST'
         });
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     // Authentication API
@@ -192,19 +200,22 @@ class ApiModule {
             method: 'POST',
             body: JSON.stringify(credentials)
         });
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     async logout() {
         const response = await this.request('/auth/logout', {
             method: 'POST'
         });
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     async getProfile() {
         const response = await this.request('/auth/profile');
-        return response.json();
+        const result = await response.json();
+        return result.success ? result.data : result;
     }
 
     // Utility methods

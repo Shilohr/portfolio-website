@@ -28,7 +28,7 @@ const envSchema = Joi.object({
         })
     }),
     // Add database type indicator
-    DB_TYPE: Joi.string().valid('mysql', 'json').default('json'),
+    DB_TYPE: Joi.string().valid('mysql', 'json', 'sqlite').default('json'),
 
     // JWT Configuration
     JWT_SECRET: Joi.string().when('NODE_ENV', {
@@ -167,7 +167,8 @@ function validateConfig() {
     // Validate required environment variables are present
     // Only require DB credentials if using MySQL
     const isJsonDb = envVars.DB_TYPE === 'json';
-    const requiredVars = isJsonDb 
+    const isSqlite = envVars.DB_TYPE === 'sqlite';
+    const requiredVars = (isJsonDb || isSqlite) 
         ? ['JWT_SECRET'] 
         : ['DB_PASSWORD', 'JWT_SECRET', 'DB_ROOT_PASSWORD'];
     const missingVars = requiredVars.filter(varName => !envVars[varName] || envVars[varName].trim() === '');
@@ -183,7 +184,7 @@ function validateConfig() {
         ];
         
         // Only check DB credentials if using MySQL
-        if (envVars.DB_TYPE !== 'json') {
+        if (envVars.DB_TYPE === 'mysql') {
             securityChecks.push(
                 { var: 'DB_PASSWORD', value: envVars.DB_PASSWORD },
                 { var: 'DB_ROOT_PASSWORD', value: envVars.DB_ROOT_PASSWORD }
@@ -273,24 +274,41 @@ function generateSecureSecrets() {
 
 // Validate a specific environment variable
 function validateVariable(varName, value, isProduction = false) {
-    const schema = envSchema.extract(varName);
-    if (!schema) {
+    try {
+        // Pre-check if the variable exists in the schema
+        const schemaKeys = envSchema.describe().keys;
+        if (!schemaKeys[varName]) {
+            return { valid: true, error: null };
+        }
+
+        // Extract the schema for the specific variable
+        const schema = envSchema.extract(varName);
+        if (!schema) {
+            return { valid: true, error: null };
+        }
+
+        // Inject appropriate context for validation
+        const context = {
+            NODE_ENV: isProduction ? 'production' : 'development'
+        };
+
+        const { error } = schema.validate(value, { context });
+        if (error) {
+            return { valid: false, error: error.details[0].message };
+        }
+
+        if (isProduction && detectWeakValues(value, varName)) {
+            return {
+                valid: false,
+                error: `${varName} appears to be using a weak or default value`
+            };
+        }
+
+        return { valid: true, error: null };
+    } catch (err) {
+        // Handle AssertError or other extraction errors
         return { valid: true, error: null };
     }
-
-    const { error } = schema.validate(value);
-    if (error) {
-        return { valid: false, error: error.details[0].message };
-    }
-
-    if (isProduction && detectWeakValues(value, varName)) {
-        return {
-            valid: false,
-            error: `${varName} appears to be using a weak or default value`
-        };
-    }
-
-    return { valid: true, error: null };
 }
 
 module.exports = {

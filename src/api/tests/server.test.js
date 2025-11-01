@@ -186,7 +186,15 @@ describe('Server Configuration', () => {
     });
 
     it('should mount auth routes at /api/auth', async () => {
-      const response = await request(app).post('/api/auth/login')
+      // Get CSRF token first
+      const csrfResponse = await request(app)
+        .get('/api/csrf-token')
+        .expect(200);
+      
+      const response = await request(app)
+        .post('/api/auth/login')
+        .set('Cookie', csrfResponse.headers['set-cookie'])
+        .set('X-CSRF-Token', csrfResponse.body.csrfToken)
         .send({ username: 'test', password: 'test' });
       
       // Should return auth-related error, not 404
@@ -211,7 +219,7 @@ describe('Server Configuration', () => {
       const response = await request(app).get('/api/unknown');
       
       expect(response.status).toBe(404);
-      expect(response.body.error).toBe('Route not found');
+      expect(response.body.error.message).toBe('Route not found');
     });
   });
 
@@ -231,12 +239,19 @@ describe('Server Configuration', () => {
       const response = await request(app).get('/test-async-error');
       
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Internal server error');
+      expect(response.body.error.message).toBe('Internal server error');
     });
 
     it('should handle validation errors', async () => {
+      // Get CSRF token first
+      const csrfResponse = await request(app)
+        .get('/api/csrf-token')
+        .expect(200);
+      
       const response = await request(app)
         .post('/api/auth/register')
+        .set('Cookie', csrfResponse.headers['set-cookie'])
+        .set('X-CSRF-Token', csrfResponse.body.csrfToken)
         .send({
           username: 'ab', // Too short
           email: 'invalid-email',
@@ -244,7 +259,7 @@ describe('Server Configuration', () => {
         });
       
       expect(response.status).toBe(400);
-      expect(response.body.errors).toBeDefined();
+      expect(response.body.error.details.validationErrors).toBeDefined();
     });
 
     it('should log errors appropriately', async () => {
@@ -345,8 +360,8 @@ describe('Server Configuration', () => {
       const response = await request(app).get('/test-error');
       
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Development error');
-      expect(response.body.stack).toBeDefined();
+      expect(response.body.error.message).toBe('Development error');
+      expect(response.body.error.details.stack).toBeDefined();
     });
 
     it('should hide error details in production', async () => {
@@ -366,8 +381,8 @@ describe('Server Configuration', () => {
       const response = await request(app).get('/test-error');
       
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Internal server error');
-      expect(response.body.stack).toBeUndefined();
+      expect(response.body.error.message).toBe('Internal server error');
+      expect(response.body.error.details).toBeUndefined();
     });
   });
 });

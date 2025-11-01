@@ -126,25 +126,29 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
         const result = await transactionManager.execute(async (connection) => {
             // Hash password and create user
             const passwordHash = await hashPassword(password);
-            const [userResult] = await connection.execute(
+            const userResult = await connection.execute(
                 'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
                 [username, email, passwordHash]
             );
 
+            // Handle both MySQL-compatible tuples and JSON adapter return shape
+            const insertResult = Array.isArray(userResult) ? userResult[0] : userResult;
+            const insertId = insertResult.insertId;
+
             // Log registration
             await connection.execute(
                 'INSERT INTO audit_log (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)',
-                [userResult.insertId, 'USER_REGISTERED', req.ip, req.get('User-Agent')]
+                [insertId, 'USER_REGISTERED', req.ip, req.get('User-Agent')]
             );
             
             logger.audit('USER_REGISTERED', req, 'user', { 
-                userId: userResult.insertId, 
+                userId: insertId, 
                 username,
                 email 
             });
 
             return {
-                userId: userResult.insertId,
+                userId: insertId,
                 username,
                 email
             };

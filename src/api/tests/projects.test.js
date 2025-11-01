@@ -126,8 +126,8 @@ describe('Projects Tests', () => {
                     .get('/api/projects');
 
                 TestHelpers.validateSuccessResponse(response, 200);
-                expect(response.body.projects).toBeDefined();
-                expect(response.body.projects).toHaveLength(2);
+                expect(response.body.data.projects).toBeDefined();
+                expect(response.body.data.projects).toHaveLength(2);
                 TestHelpers.validatePagination(response, 1, 20);
             });
 
@@ -198,9 +198,9 @@ describe('Projects Tests', () => {
                     .get('/api/projects/1');
 
                 TestHelpers.validateSuccessResponse(response, 200);
-                expect(response.body.project).toBeDefined();
-                expect(response.body.project.id).toBe(1);
-                expect(response.body.project.technologies).toEqual(['JavaScript', 'Node.js']);
+                expect(response.body.data.project).toBeDefined();
+                expect(response.body.data.project.id).toBe(1);
+                expect(response.body.data.project.technologies).toEqual(['JavaScript', 'Node.js']);
             });
 
             test('should return 404 for non-existent project', async () => {
@@ -247,7 +247,7 @@ describe('Projects Tests', () => {
 
                 TestHelpers.validateSuccessResponse(response, 201);
                 expect(response.body.message).toBe('Project created successfully');
-                expect(response.body.projectId).toBe(1);
+                expect(response.body.data.projectId).toBe(1);
             });
 
             test('should reject project creation without authentication', async () => {
@@ -276,7 +276,7 @@ describe('Projects Tests', () => {
                     .send(invalidData);
 
                 TestHelpers.validateErrorResponse(response, 400);
-                expect(response.body.errors).toBeDefined();
+                expect(response.body.error.details.validationErrors).toBeDefined();
             });
 
             test('should handle database transaction rollback on error', async () => {
@@ -562,7 +562,7 @@ describe('Projects Tests', () => {
             const responseTime = endTime - startTime;
 
             TestHelpers.validateSuccessResponse(response, 200);
-            expect(response.body.projects).toHaveLength(50);
+            expect(response.body.data.projects).toHaveLength(50);
             expect(responseTime).toBeLessThan(1000); // Should complete within 1 second
         });
 
