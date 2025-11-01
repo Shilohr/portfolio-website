@@ -14,7 +14,7 @@ const { errorHandler, sendSuccess, sendError } = require('./utils/errorHandler')
 const { commonValidations, handleValidationErrors } = require('./utils/validation');
 const DatabaseMaintenance = require('./utils/dbMaintenance');
 // Load environment variables before requiring modules that depend on them
-dotenv.config({ path: path.resolve(__dirname, '../../../config/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const { cache } = require('./utils/cache');
 const { performanceMonitor, requestMonitor, monitorQuery } = require('./utils/performanceMonitor');
@@ -799,6 +799,15 @@ app.get('/', csrfProtection, async (req, res) => {
  */
 app.get('/login.html', csrfProtection, async (req, res) => {
     await serveHtmlWithCSRF(req, res, 'login.html');
+});
+
+// Explicit HTML routes with CSRF protection
+app.get('/admin.html', csrfProtection, async (req, res) => {
+    await serveHtmlWithCSRF(req, res, 'admin.html');
+});
+
+app.get('/projects.html', csrfProtection, async (req, res) => {
+    await serveHtmlWithCSRF(req, res, 'projects.html');
 });
 
 // Static file serving - serve assets only, not HTML files

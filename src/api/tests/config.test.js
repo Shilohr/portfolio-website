@@ -15,6 +15,11 @@ describe('Configuration Validation', () => {
     delete process.env.GITHUB_TOKEN;
     delete process.env.SMTP_USER;
     delete process.env.SMTP_PASS;
+    // Set up test environment with valid defaults
+    process.env.DB_TYPE = 'json';
+    process.env.DB_PASSWORD = 'test-pass-8'; // Meets new 8-char minimum
+    process.env.DB_ROOT_PASSWORD = 'test-root-8'; // Meets new 8-char minimum
+    process.env.JWT_SECRET = 'test-jwt-8'; // Meets new 8-char minimum
   });
 
   afterAll(() => {
@@ -48,6 +53,7 @@ describe('Configuration Validation', () => {
 
     it('should require strong secrets in production', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'weak-secret';
       process.env.DB_PASSWORD = 'short';
       process.env.DB_ROOT_PASSWORD = 'also-short';
@@ -57,6 +63,7 @@ describe('Configuration Validation', () => {
 
     it('should accept strong secrets in production', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -73,6 +80,7 @@ describe('Configuration Validation', () => {
 
     it('should validate GitHub token format in production', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -85,6 +93,7 @@ describe('Configuration Validation', () => {
 
     it('should accept valid GitHub token format', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -116,6 +125,12 @@ describe('Configuration Validation', () => {
     });
 
     it('should validate email format', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
+      process.env.JWT_SECRET = 'a'.repeat(64);
+      process.env.DB_PASSWORD = 'b'.repeat(32);
+      process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
+      process.env.SMTP_PASS = 'd'.repeat(16);
       process.env.SMTP_USER = 'invalid-email';
       
       expect(() => validateConfig()).toThrow(/SMTP_USER must be a valid email/);
@@ -123,6 +138,7 @@ describe('Configuration Validation', () => {
 
     it('should validate CORS origin URL', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -137,6 +153,7 @@ describe('Configuration Validation', () => {
   describe('Security Checks', () => {
     it('should detect weak password patterns', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'securepassword';
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -148,6 +165,7 @@ describe('Configuration Validation', () => {
 
     it('should detect weak JWT secrets', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'your-secret-key';
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -159,6 +177,7 @@ describe('Configuration Validation', () => {
 
     it('should detect common weak patterns', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'password123';
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -172,12 +191,13 @@ describe('Configuration Validation', () => {
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
       
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
       process.env.SMTP_USER = 'test@example.com';
       process.env.SMTP_PASS = 'd'.repeat(16);
-      process.env.GITHUB_TOKEN = 'your-github-personal-access-token';
+      process.env.GITHUB_TOKEN = 'ghp_your-github-personal-access-token';
       
       validateConfig();
       
@@ -192,6 +212,7 @@ describe('Configuration Validation', () => {
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
       
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -209,6 +230,7 @@ describe('Configuration Validation', () => {
 
     it('should detect insufficient entropy in secrets', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(32); // Too short for production
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
@@ -275,11 +297,15 @@ describe('Configuration Validation', () => {
   describe('Rate Limiting Configuration', () => {
     it('should set appropriate rate limits for production', () => {
       process.env.NODE_ENV = 'production';
+      process.env.DB_TYPE = 'mysql';
       process.env.JWT_SECRET = 'a'.repeat(64);
       process.env.DB_PASSWORD = 'b'.repeat(32);
       process.env.DB_ROOT_PASSWORD = 'c'.repeat(32);
       process.env.SMTP_USER = 'test@example.com';
       process.env.SMTP_PASS = 'd'.repeat(16);
+      // Clear any existing rate limit variables
+      delete process.env.RATE_LIMIT_MAX_REQUESTS;
+      delete process.env.AUTH_RATE_LIMIT_MAX;
       
       const { configStatus } = validateConfig();
       
@@ -289,6 +315,9 @@ describe('Configuration Validation', () => {
 
     it('should set lenient rate limits for development', () => {
       process.env.NODE_ENV = 'development';
+      // Clear any existing rate limit variables
+      delete process.env.RATE_LIMIT_MAX_REQUESTS;
+      delete process.env.AUTH_RATE_LIMIT_MAX;
       
       const { configStatus } = validateConfig();
       
@@ -313,6 +342,10 @@ describe('Configuration Validation', () => {
       delete process.env.NODE_ENV;
       delete process.env.PORT;
       delete process.env.DB_HOST;
+      // Ensure we still have valid passwords for the test
+      process.env.DB_PASSWORD = 'test-pass-8';
+      process.env.DB_ROOT_PASSWORD = 'test-root-8';
+      process.env.JWT_SECRET = 'test-jwt-8';
       
       const { envVars } = validateConfig();
       
@@ -377,6 +410,9 @@ describe('Configuration Validation', () => {
       process.env.NODE_ENV = 'invalid';
       process.env.PORT = '99999';
       process.env.LOG_LEVEL = 'invalid';
+      process.env.DB_PASSWORD = 'test-pass-8';
+      process.env.DB_ROOT_PASSWORD = 'test-root-8';
+      process.env.JWT_SECRET = 'test-jwt-8';
       
       try {
         validateConfig();

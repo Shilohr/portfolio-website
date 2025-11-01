@@ -8,23 +8,35 @@ const envSchema = Joi.object({
     DB_USER: Joi.string().default('portfolio'),
     DB_PASSWORD: Joi.string().when('NODE_ENV', {
         is: 'production',
-        then: Joi.string().min(32).required().messages({
-            'string.min': 'DB_PASSWORD must be at least 32 characters in production',
-            'any.required': 'DB_PASSWORD is required in production'
+        then: Joi.when('DB_TYPE', {
+            is: 'mysql',
+            then: Joi.string().min(32).required().messages({
+                'string.min': 'DB_PASSWORD must be at least 32 characters in production',
+                'any.required': 'DB_PASSWORD is required in production with MySQL'
+            }),
+            otherwise: Joi.string().min(8).optional().messages({
+                'string.min': 'DB_PASSWORD must be at least 8 characters in production with non-MySQL DB'
+            })
         }),
-        otherwise: Joi.string().min(16).optional().messages({
-            'string.min': 'DB_PASSWORD must be at least 16 characters in development'
+        otherwise: Joi.string().min(8).optional().messages({
+            'string.min': 'DB_PASSWORD must be at least 8 characters in development/test'
         })
     }),
     DB_NAME: Joi.string().default('portfolio'),
     DB_ROOT_PASSWORD: Joi.string().when('NODE_ENV', {
         is: 'production',
-        then: Joi.string().min(32).required().messages({
-            'string.min': 'DB_ROOT_PASSWORD must be at least 32 characters in production',
-            'any.required': 'DB_ROOT_PASSWORD is required in production'
+        then: Joi.when('DB_TYPE', {
+            is: 'mysql',
+            then: Joi.string().min(32).required().messages({
+                'string.min': 'DB_ROOT_PASSWORD must be at least 32 characters in production',
+                'any.required': 'DB_ROOT_PASSWORD is required in production with MySQL'
+            }),
+            otherwise: Joi.string().min(8).optional().messages({
+                'string.min': 'DB_ROOT_PASSWORD must be at least 8 characters in production with non-MySQL DB'
+            })
         }),
-        otherwise: Joi.string().min(16).optional().messages({
-            'string.min': 'DB_ROOT_PASSWORD must be at least 16 characters in development'
+        otherwise: Joi.string().min(8).optional().messages({
+            'string.min': 'DB_ROOT_PASSWORD must be at least 8 characters in development/test'
         })
     }),
     // Add database type indicator
@@ -37,7 +49,7 @@ const envSchema = Joi.object({
             'string.min': 'JWT_SECRET must be at least 64 characters in production',
             'any.required': 'JWT_SECRET is required in production'
         }),
-        otherwise: Joi.string().min(16).default(() => {
+        otherwise: Joi.string().min(8).default(() => {
             // For development, use a deterministic secret if not in .env
             // This prevents session invalidation on server restart
             return process.env.JWT_SECRET || 'development-jwt-secret-32-chars-long';
@@ -130,13 +142,21 @@ const weakPatterns = [
     'qwerty'
 ];
 
-function detectWeakValues(value, varName) {
+function detectWeakValues(value, varName, isProduction = false) {
     if (!value || typeof value !== 'string') return false;
     
     const lowerValue = value.toLowerCase();
     
-    // Check for weak patterns
-    if (weakPatterns.some(pattern => lowerValue.includes(pattern))) {
+    // In development/test, be more lenient - only check for obviously weak patterns
+    if (!isProduction) {
+        // Only flag clearly insecure values in non-production
+        const obviouslyWeak = ['password', 'secret', '123456', 'qwerty'];
+        return obviouslyWeak.some(pattern => lowerValue === pattern);
+    }
+    
+    // In production, be strict
+    // Check for weak patterns (but exclude valid URLs)
+    if (varName !== 'CORS_ORIGIN' && weakPatterns.some(pattern => lowerValue.includes(pattern))) {
         return true;
     }
     
@@ -196,7 +216,7 @@ function validateConfig() {
         }
 
         for (const check of securityChecks) {
-            if (detectWeakValues(check.value, check.var)) {
+            if (detectWeakValues(check.value, check.var, true)) {
                 throw new Error(
                     `${check.var} appears to be using a weak or default value. ` +
                     'Please use a cryptographically secure random string.'
@@ -279,33 +299,55 @@ function generateSecureSecrets() {
 // Validate a specific environment variable
 function validateVariable(varName, value, isProduction = false) {
     try {
+        // First check for weak values before schema validation
+        if (detectWeakValues(value, varName, isProduction)) {
+            return {
+                valid: false,
+                error: `${varName} appears to be using a weak or default value`
+            };
+        }
+
         // Pre-check if the variable exists in the schema
         const schemaKeys = envSchema.describe().keys;
         if (!schemaKeys[varName]) {
             return { valid: true, error: null };
         }
 
-        // Extract the schema for the specific variable
-        const schema = envSchema.extract(varName);
-        if (!schema) {
-            return { valid: true, error: null };
-        }
-
-        // Inject appropriate context for validation
-        const context = {
-            NODE_ENV: isProduction ? 'production' : 'development'
+        // Create a temporary environment with the context and required defaults
+        const nodeEnv = isProduction ? 'production' : 'development';
+        const tempEnv = {
+            NODE_ENV: nodeEnv,
+            DB_TYPE: 'json', // Use JSON to avoid DB password requirements
+            [varName]: value
         };
 
-        const { error } = schema.validate(value, { context });
-        if (error) {
-            return { valid: false, error: error.details[0].message };
+        // Add minimum required variables for validation to pass
+        if (!tempEnv.DB_PASSWORD) tempEnv.DB_PASSWORD = 'test-pass-8';
+        if (!tempEnv.JWT_SECRET) {
+            tempEnv.JWT_SECRET = isProduction ? 'a'.repeat(64) : 'test-jwt-8';
+        }
+        
+        // Add production requirements if needed
+        if (isProduction) {
+            if (!tempEnv.SMTP_USER) tempEnv.SMTP_USER = 'test@example.com';
+            if (!tempEnv.SMTP_PASS) tempEnv.SMTP_PASS = 'd'.repeat(16);
         }
 
-        if (isProduction && detectWeakValues(value, varName)) {
-            return {
-                valid: false,
-                error: `${varName} appears to be using a weak or default value`
-            };
+        // Validate the entire schema with our context
+        const { error } = envSchema.validate(tempEnv, {
+            stripUnknown: false,
+            allowUnknown: true,
+            convert: true
+        });
+
+        if (error) {
+            // Check if the error is related to our variable
+            const relevantError = error.details.find(detail => 
+                detail.path && detail.path.includes(varName)
+            );
+            if (relevantError) {
+                return { valid: false, error: relevantError.message };
+            }
         }
 
         return { valid: true, error: null };

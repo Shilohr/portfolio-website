@@ -87,7 +87,7 @@ export async function makeAPIRequest(url, options = {}) {
     try {
         const response = await fetch(url, mergedOptions);
         
-        // Handle CSRF errors specifically
+        // Handle CSRF errors specifically - only refresh when explicitly required
         if (response.status === 403) {
             const errorData = await response.json().catch(() => ({}));
             

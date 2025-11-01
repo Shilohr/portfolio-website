@@ -109,11 +109,24 @@ router.post('/sync', [
                 }
 
                 // Check database for fresh data (within 15 minutes)
-                const [freshRepos] = await db.execute(`
-                    SELECT COUNT(*) as count, MAX(last_sync) as last_sync 
-                    FROM github_repos 
-                    WHERE last_sync > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
-                `);
+                // Try MySQL-specific query first, fallback to universal approach
+                let freshRepos = [];
+                try {
+                    [freshRepos] = await db.execute(`
+                        SELECT COUNT(*) as count, MAX(last_sync) as last_sync 
+                        FROM github_repos 
+                        WHERE last_sync > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+                    `);
+                } catch (mysqlError) {
+                    // Fallback for non-MySQL adapters: fetch recent repos and filter in JavaScript
+                    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+                    const [recentRepos] = await db.execute(`
+                        SELECT COUNT(*) as count, MAX(last_sync) as last_sync 
+                        FROM github_repos 
+                        WHERE last_sync > ?
+                    `, [fifteenMinutesAgo.toISOString()]);
+                    freshRepos = recentRepos;
+                }
                 
                 if (freshRepos.length > 0 && freshRepos[0].count > 0) {
                     const lastSync = freshRepos[0].last_sync;
@@ -364,8 +377,8 @@ router.post('/sync', [
             timestamp: Date.now()
         };
         
-        // Clear GitHub cache first, then set our sync cache
-        cache.clear('github');
+        // Clear specific cache key first, then set our sync cache
+        cache.delete(cacheKey);
         cache.set(cacheKey, resultData, 'github');
         
         sendSuccess(res, resultData, 'GitHub repositories synchronized successfully');

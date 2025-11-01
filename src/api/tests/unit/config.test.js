@@ -15,11 +15,11 @@ describe('Configuration Validation', () => {
     delete process.env.LOG_LEVEL;
     // Set up test environment with valid defaults
     process.env.DB_TYPE = 'json';
-    process.env.DB_PASSWORD = 'test-password-16-chars-minimum';
-    process.env.DB_ROOT_PASSWORD = 'test-root-password-16-min';
+    process.env.DB_PASSWORD = 'test-pass-8'; // Meets new 8-char minimum
+    process.env.DB_ROOT_PASSWORD = 'test-root-8'; // Meets new 8-char minimum
     process.env.DB_USER = 'portfolio';
     process.env.DB_NAME = 'portfolio';
-    process.env.JWT_SECRET = 'test-jwt-secret-32-chars-long-for-testing';
+    process.env.JWT_SECRET = 'test-jwt-8'; // Meets new 8-char minimum
     process.env.GITHUB_TOKEN = 'ghp_1234567890abcdef1234567890abcdef12345678';
   });
 

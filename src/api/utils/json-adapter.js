@@ -244,10 +244,14 @@ async save() {
             // For SELECT queries, return rows as first element of array
             const rows = await this.executeSQL(sql, params, this._connectionContext);
             return [rows]; // Return as array to match MySQL format
-        } else {
-            // For INSERT/UPDATE/DELETE queries, execute and return result as first element
+        } else if (trimmedSql.startsWith('INSERT')) {
+            // For INSERT queries, return proper format with insertId
             const result = await this.executeSQL(sql, params, this._connectionContext);
-            return [result]; // Return result object as first element to match MySQL format
+            return [{ insertId: result.insertId }]; // Return insertId format
+        } else {
+            // For UPDATE/DELETE queries, return result as first element
+            const result = await this.executeSQL(sql, params, this._connectionContext);
+            return [{ affectedRows: result.affectedRows }]; // Return affectedRows format
         }
     }
 
@@ -479,18 +483,10 @@ return data;
             /IN\s*\(/i,
             /BETWEEN/i,
             /LIKE/i,
-            /IS\s+(NULL|NOT\s+NULL)/i,
             /CASE\s+WHEN/i
         ];
 
-        // Allow parentheses for grouping but check for unsupported constructs within them
-        const cleanWhereClause = whereClause.replace(/\([^)]*\)/g, '()'); // Replace parenthetical groups with placeholder
-        for (const pattern of unsupportedPatterns) {
-            if (pattern.test(cleanWhereClause)) {
-                throw new Error(`Unsupported SQL construct in WHERE clause: ${whereClause}`);
-            }
-        }
-
+        // Allow parentheses for grouping and IS NULL operators
         for (const pattern of unsupportedPatterns) {
             if (pattern.test(whereClause)) {
                 throw new Error(`Unsupported SQL construct in WHERE clause: ${whereClause}`);
@@ -510,152 +506,10 @@ return data;
 
         return data.filter(record => {
             try {
-                // Handle basic equality conditions with AND/OR
-                const orConditions = whereClause.split('OR').map(c => c.trim());
-                
-                return orConditions.some(orCondition => {
-                    const andConditions = orCondition.split('AND').map(c => c.trim());
-                    return andConditions.every(andCondition => {
-                        // Skip empty conditions
-                        if (!andCondition || andCondition.trim() === '') {
-                            return true;
-                        }
-                        // Handle equality conditions
-                        const match = andCondition.match(/((?:\w+\.)?\w+)\s*=\s*\?/i);
-                        if (match && params.length > 0) {
-                            const column = match[1].split('.').pop(); // Strip table alias prefix
-                            const paramIndex = this.getParamIndex(whereClause, andCondition);
-                            if (paramIndex < 0 || paramIndex >= params.length) {
-                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
-                            }
-                            return record[column] == params[paramIndex]; // Use == for loose comparison
-                        }
-                        
-                        // Handle greater than conditions with parameter placeholders
-                        const greaterParamMatch = andCondition.match(/((?:\w+\.)?\w+)\s*>\s*\?/i);
-                        if (greaterParamMatch && params.length > 0) {
-                            const column = greaterParamMatch[1].split('.').pop(); // Strip table alias prefix
-                            const paramIndex = this.getParamIndex(whereClause, andCondition);
-                            if (paramIndex < 0 || paramIndex >= params.length) {
-                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
-                            }
-                            const recordValue = record[column];
-                            const paramValue = params[paramIndex];
-                            
-                            // Handle date comparisons
-                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
-                                const recordTime = new Date(recordValue).getTime();
-                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
-                                return recordTime > paramTime;
-                            }
-                            return recordValue > paramValue;
-                        }
-                        
-                        // Handle less than conditions with parameter placeholders
-                        const lessParamMatch = andCondition.match(/((?:\w+\.)?\w+)\s*<\s*\?/i);
-                        if (lessParamMatch && params.length > 0) {
-                            const column = lessParamMatch[1].split('.').pop(); // Strip table alias prefix
-                            const paramIndex = this.getParamIndex(whereClause, andCondition);
-                            if (paramIndex < 0 || paramIndex >= params.length) {
-                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
-                            }
-                            const recordValue = record[column];
-                            const paramValue = params[paramIndex];
-                            
-                            // Handle date comparisons
-                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
-                                const recordTime = new Date(recordValue).getTime();
-                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
-                                return recordTime < paramTime;
-                            }
-                            return recordValue < paramValue;
-                        }
-                        
-                        // Handle greater than or equal conditions with parameter placeholders
-                        const greaterEqualMatch = andCondition.match(/((?:\w+\.)?\w+)\s*>=\s*\?/i);
-                        if (greaterEqualMatch && params.length > 0) {
-                            const column = greaterEqualMatch[1].split('.').pop(); // Strip table alias prefix
-                            const paramIndex = this.getParamIndex(whereClause, andCondition);
-                            if (paramIndex < 0 || paramIndex >= params.length) {
-                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
-                            }
-                            const recordValue = record[column];
-                            const paramValue = params[paramIndex];
-                            
-                            // Handle date comparisons
-                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
-                                const recordTime = new Date(recordValue).getTime();
-                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
-                                return recordTime >= paramTime;
-                            }
-                            return recordValue >= paramValue;
-                        }
-                        
-                        // Handle less than or equal conditions with parameter placeholders
-                        const lessEqualMatch = andCondition.match(/((?:\w+\.)?\w+)\s*<=\s*\?/i);
-                        if (lessEqualMatch && params.length > 0) {
-                            const column = lessEqualMatch[1].split('.').pop(); // Strip table alias prefix
-                            const paramIndex = this.getParamIndex(whereClause, andCondition);
-                            if (paramIndex < 0 || paramIndex >= params.length) {
-                                throw new Error(`Invalid parameter index for condition: ${andCondition}`);
-                            }
-                            const recordValue = record[column];
-                            const paramValue = params[paramIndex];
-                            
-                            // Handle date comparisons
-                            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
-                                const recordTime = new Date(recordValue).getTime();
-                                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
-                                return recordTime <= paramTime;
-                            }
-                            return recordValue <= paramValue;
-                        }
-                        
-                        // Handle greater than conditions (for expires_at > NOW())
-                        const greaterMatch = andCondition.match(/((?:\w+\.)?\w+)\s*>\s*NOW\(\)/i);
-                        if (greaterMatch) {
-                            const column = greaterMatch[1].split('.').pop(); // Strip table alias prefix
-                            const recordValue = record[column];
-                            if (recordValue) {
-                                const expiresTime = new Date(recordValue).getTime();
-                                const nowTime = Date.now();
-                                return expiresTime > nowTime;
-                            }
-                            return false;
-                        }
-                        
-                        // Handle less than conditions (for expires_at < NOW())
-                        const lessMatch = andCondition.match(/((?:\w+\.)?\w+)\s*<\s*NOW\(\)/i);
-                        if (lessMatch) {
-                            const column = lessMatch[1].split('.').pop(); // Strip table alias prefix
-                            const recordValue = record[column];
-                            if (recordValue === null || recordValue === undefined) {
-                                return false; // If no expires_at, don't consider it expired
-                            }
-                            const expiresTime = new Date(recordValue).getTime();
-                            const nowTime = Date.now();
-                            return expiresTime < nowTime;
-                        }
-                        
-                        // Handle boolean conditions (is_active = TRUE)
-                        const booleanMatch = andCondition.match(/((?:\w+\.)?\w+)\s*=\s*(TRUE|FALSE)/i);
-                        if (booleanMatch) {
-                            const column = booleanMatch[1].split('.').pop(); // Strip table alias prefix
-                            const expectedValue = booleanMatch[2].toUpperCase() === 'TRUE';
-                            const recordValue = record[column];
-                            // If field doesn't exist, default to TRUE for is_active
-                            if (recordValue === undefined && column === 'is_active') {
-                                return expectedValue; // Assume active if not set
-                            }
-                            return recordValue === expectedValue;
-                        }
-                        
-                        // If we can't parse the condition, fail closed
-                        throw new Error(`Unsupported WHERE clause condition: ${andCondition}`);
-                    });
-                });
+                // Handle complex WHERE clauses with parentheses and proper AND/OR precedence
+                return this.evaluateComplexWhereClause(whereClause, record, params);
             } catch (error) {
-                logger.error('WHERE clause parsing failed', null, { 
+                logger.error('WHERE clause evaluation failed', null, { 
                     whereClause, 
                     params, 
                     error: error.message 
@@ -663,6 +517,282 @@ return data;
                 throw error;
             }
         });
+    }
+
+    evaluateComplexWhereClause(whereClause, record, params) {
+        // Handle parentheses with proper precedence
+        return this.evaluateWithParentheses(whereClause, record, params);
+    }
+
+evaluateWithParentheses(clause, record, params) {
+        // Find the first opening parenthesis that's not part of a function call
+        let parenStart = -1;
+        let parenDepth = 0;
+        
+        for (let i = 0; i < clause.length; i++) {
+            const char = clause[i];
+            
+            if (char === '(') {
+                // Check if this is a function call (preceded by a word character)
+                const isFunctionCall = i > 0 && /\w/.test(clause[i - 1]);
+                
+                if (!isFunctionCall && parenDepth === 0) {
+                    parenStart = i;
+                }
+                parenDepth++;
+            } else if (char === ')') {
+                parenDepth--;
+                
+                if (parenDepth === 0 && parenStart >= 0) {
+                    // Found matching parentheses for grouping
+                    const subClause = clause.substring(parenStart + 1, i).trim();
+                    const subResult = this.evaluateSimpleWhereClause(subClause, record, params);
+                    
+                    // Replace the parenthetical expression with its result
+                    const replacement = subResult ? 'TRUE' : 'FALSE';
+                    const newClause = clause.substring(0, parenStart) + replacement + clause.substring(i + 1);
+                    
+                    // Recursively evaluate the simplified clause
+                    return this.evaluateWithParentheses(newClause, record, params);
+                }
+            }
+        }
+        
+        // No more grouping parentheses, evaluate the simple clause
+        return this.evaluateSimpleWhereClause(clause, record, params);
+    }
+
+    evaluateSimpleWhereClause(clause, record, params) {
+        // Handle OR conditions at the top level
+        const orParts = clause.split(/\s+OR\s+/i).map(part => part.trim());
+        
+        return orParts.some(orPart => {
+            // Handle AND conditions within each OR part
+            const andParts = orPart.split(/\s+AND\s+/i).map(part => part.trim());
+            
+            return andParts.every(andPart => {
+                // Skip empty conditions
+                if (!andPart || andPart.trim() === '') {
+                    return true;
+                }
+                
+                // Handle TRUE/FALSE literals (from parenthetical evaluation)
+                if (andPart === 'TRUE') return true;
+                if (andPart === 'FALSE') return false;
+                
+                return this.evaluateCondition(andPart, record, params, clause);
+            });
+        });
+    }
+
+    evaluateCondition(condition, record, params, fullClause) {
+        // Validate table alias format first
+        this.validateFieldReference(condition);
+        
+        // Handle equality conditions
+        const match = condition.match(/((?:\w+\.)?\w+)\s*=\s*\?/i);
+        if (match && params.length > 0) {
+            const column = match[1].split('.').pop(); // Strip table alias prefix
+            const paramIndex = this.getParamIndex(fullClause, condition);
+            if (paramIndex < 0 || paramIndex >= params.length) {
+                throw new Error(`Invalid parameter index for condition: ${condition}`);
+            }
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            return record[column] == params[paramIndex]; // Use == for loose comparison
+        }
+                        
+                        // Handle greater than conditions with parameter placeholders
+        const greaterParamMatch = condition.match(/((?:\w+\.)?\w+)\s*>\s*\?/i);
+        if (greaterParamMatch && params.length > 0) {
+            const column = greaterParamMatch[1].split('.').pop(); // Strip table alias prefix
+            const paramIndex = this.getParamIndex(fullClause, condition);
+            if (paramIndex < 0 || paramIndex >= params.length) {
+                throw new Error(`Invalid parameter index for condition: ${condition}`);
+            }
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            const recordValue = record[column];
+            const paramValue = params[paramIndex];
+            
+            // Handle date comparisons
+            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                const recordTime = new Date(recordValue).getTime();
+                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                return recordTime > paramTime;
+            }
+            return recordValue > paramValue;
+        }
+        
+        // Handle less than conditions with parameter placeholders
+        const lessParamMatch = condition.match(/((?:\w+\.)?\w+)\s*<\s*\?/i);
+        if (lessParamMatch && params.length > 0) {
+            const column = lessParamMatch[1].split('.').pop(); // Strip table alias prefix
+            const paramIndex = this.getParamIndex(fullClause, condition);
+            if (paramIndex < 0 || paramIndex >= params.length) {
+                throw new Error(`Invalid parameter index for condition: ${condition}`);
+            }
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            const recordValue = record[column];
+            const paramValue = params[paramIndex];
+            
+            // Handle date comparisons
+            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                const recordTime = new Date(recordValue).getTime();
+                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                return recordTime < paramTime;
+            }
+            return recordValue < paramValue;
+        }
+        
+        // Handle greater than or equal conditions with parameter placeholders
+        const greaterEqualMatch = condition.match(/((?:\w+\.)?\w+)\s*>=\s*\?/i);
+        if (greaterEqualMatch && params.length > 0) {
+            const column = greaterEqualMatch[1].split('.').pop(); // Strip table alias prefix
+            const paramIndex = this.getParamIndex(fullClause, condition);
+            if (paramIndex < 0 || paramIndex >= params.length) {
+                throw new Error(`Invalid parameter index for condition: ${condition}`);
+            }
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            const recordValue = record[column];
+            const paramValue = params[paramIndex];
+            
+            // Handle date comparisons
+            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                const recordTime = new Date(recordValue).getTime();
+                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                return recordTime >= paramTime;
+            }
+            return recordValue >= paramValue;
+        }
+        
+        // Handle less than or equal conditions with parameter placeholders
+        const lessEqualMatch = condition.match(/((?:\w+\.)?\w+)\s*<=\s*\?/i);
+        if (lessEqualMatch && params.length > 0) {
+            const column = lessEqualMatch[1].split('.').pop(); // Strip table alias prefix
+            const paramIndex = this.getParamIndex(fullClause, condition);
+            if (paramIndex < 0 || paramIndex >= params.length) {
+                throw new Error(`Invalid parameter index for condition: ${condition}`);
+            }
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            const recordValue = record[column];
+            const paramValue = params[paramIndex];
+            
+            // Handle date comparisons
+            if (recordValue && (paramValue instanceof Date || typeof paramValue === 'string' || typeof paramValue === 'number')) {
+                const recordTime = new Date(recordValue).getTime();
+                const paramTime = paramValue instanceof Date ? paramValue.getTime() : new Date(paramValue).getTime();
+                return recordTime <= paramTime;
+            }
+            return recordValue <= paramValue;
+        }
+        
+        // Handle greater than conditions (for expires_at > NOW())
+        const greaterMatch = condition.match(/((?:\w+\.)?\w+)\s*>\s*NOW\(\)/i);
+        if (greaterMatch) {
+            const column = greaterMatch[1].split('.').pop(); // Strip table alias prefix
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            const recordValue = record[column];
+            if (recordValue) {
+                const expiresTime = new Date(recordValue).getTime();
+                const nowTime = Date.now();
+                return expiresTime > nowTime;
+            }
+            return false;
+        }
+        
+        // Handle less than conditions (for expires_at < NOW())
+        const lessMatch = condition.match(/((?:\w+\.)?\w+)\s*<\s*NOW\(\)/i);
+        if (lessMatch) {
+            const column = lessMatch[1].split('.').pop(); // Strip table alias prefix
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            const recordValue = record[column];
+            if (recordValue === null || recordValue === undefined) {
+                return false; // If no expires_at, don't consider it expired
+            }
+            const expiresTime = new Date(recordValue).getTime();
+            const nowTime = Date.now();
+            return expiresTime < nowTime;
+        }
+        
+        // Handle IS NULL conditions
+        const isNullMatch = condition.match(/((?:\w+\.)?\w+)\s+IS\s+NULL/i);
+        if (isNullMatch) {
+            const column = isNullMatch[1].split('.').pop(); // Strip table alias prefix
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            return record[column] === null || record[column] === undefined;
+        }
+        
+        // Handle boolean conditions (is_active = TRUE)
+        const booleanMatch = condition.match(/((?:\w+\.)?\w+)\s*=\s*(TRUE|FALSE)/i);
+        if (booleanMatch) {
+            const column = booleanMatch[1].split('.').pop(); // Strip table alias prefix
+            const expectedValue = booleanMatch[2].toUpperCase() === 'TRUE';
+            const recordValue = record[column];
+            
+            // Check if field exists in record
+            if (!(column in record)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+            
+            // If field doesn't exist, default to TRUE for is_active
+            if (recordValue === undefined && column === 'is_active') {
+                return expectedValue; // Assume active if not set
+            }
+            return recordValue === expectedValue;
+        }
+        
+        // If we can't parse the condition, fail closed
+        throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+    }
+
+    validateFieldReference(condition) {
+        const fieldMatch = condition.match(/((?:\w+\.)*\w+)\s*[<>=!]+\s*(\?|NOW\(\)|TRUE|FALSE|NULL)/i);
+        if (fieldMatch) {
+            const fieldRef = fieldMatch[1];
+            // Check if it has a table alias that's not just "p." or no alias
+            if (fieldRef.includes('.') && !fieldRef.match(/^(p\.)?\w+$/i)) {
+                throw new Error(`Unsupported WHERE clause condition: ${condition}`);
+            }
+        }
     }
     
     getParamIndex(fullWhereClause, specificCondition) {
@@ -996,10 +1126,14 @@ class JSONConnection {
                 // For SELECT queries, return rows as first element of array
                 const rows = await this.sharedAdapter.executeSQL(sql, params, this);
                 return [rows]; // Return as array to match MySQL format
-            } else {
-                // For INSERT/UPDATE/DELETE queries, execute and return result as first element
+            } else if (trimmedSql.startsWith('INSERT')) {
+                // For INSERT queries, return proper format with insertId
                 const result = await this.sharedAdapter.executeSQL(sql, params, this);
-                return [result]; // Return result object as first element to match MySQL format
+                return [{ insertId: result.insertId }]; // Return insertId format
+            } else {
+                // For UPDATE/DELETE queries, return result as first element
+                const result = await this.sharedAdapter.executeSQL(sql, params, this);
+                return [{ affectedRows: result.affectedRows }]; // Return affectedRows format
             }
         } finally {
             this.sharedAdapter._connectionContext = null;

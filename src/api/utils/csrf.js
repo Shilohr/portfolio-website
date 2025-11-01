@@ -1,4 +1,6 @@
 const csrf = require('csurf');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { logger } = require('./logger');
 const { sendError } = require('./errorHandler');
 
@@ -12,24 +14,132 @@ const csrfProtection = csrf({
     ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
 });
 
+// Helper function for timing-safe comparison
+const timingSafeEqual = (a, b) => {
+    if (a.length !== b.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+};
+
+// Validate JWT token from Authorization header
+const validateAuthorizationToken = async (req) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return false;
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return false;
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Check if token has jti (new format) or fallback to old method
+        if (!decoded.jti) {
+            // Fallback for old tokens - use the old expensive method
+            const db = req.db;
+            const [sessions] = await db.execute(
+                'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND is_active = 1 AND expires_at > ?',
+                [decoded.userId, new Date()]
+            );
+
+            if (sessions.length === 0) {
+                return false;
+            }
+
+            // Verify token hash against stored hash
+            let validSession = null;
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+            for (const session of sessions) {
+                const isValid = timingSafeEqual(tokenHash, session.token_hash);
+                if (isValid) {
+                    validSession = session;
+                    break;
+                }
+            }
+
+            if (!validSession) {
+                return false;
+            }
+
+            // Revalidate user status to prevent disabled user bypass
+            const [users] = await db.execute(
+                'SELECT is_active, role FROM users WHERE id = ?',
+                [decoded.userId]
+            );
+
+            if (users.length === 0 || !users[0].is_active) {
+                return false;
+            }
+
+            // Store user info for downstream middleware
+            req.user = {
+                ...decoded,
+                role: users[0].role
+            };
+            return true;
+        }
+
+        // New fast method using jti
+        const db = req.db;
+        const [sessions] = await db.execute(
+            'SELECT id, token_hash FROM user_sessions WHERE user_id = ? AND jti = ? AND is_active = 1 AND expires_at > ?',
+            [decoded.userId, decoded.jti, new Date()]
+        );
+
+        if (sessions.length === 0) {
+            return false;
+        }
+
+        const session = sessions[0];
+
+        // Verify token against stored hash
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const isValid = timingSafeEqual(tokenHash, session.token_hash);
+
+        if (!isValid) {
+            return false;
+        }
+
+        // Revalidate user status to prevent disabled user bypass
+        const [users] = await db.execute(
+            'SELECT is_active, role FROM users WHERE id = ?',
+            [decoded.userId]
+        );
+
+        if (users.length === 0 || !users[0].is_active) {
+            return false;
+        }
+
+        // Store user info for downstream middleware
+        req.user = {
+            ...decoded,
+            role: users[0].role
+        };
+        req.sessionId = session.id;
+        return true;
+    } catch (error) {
+        logger.debug('Authorization token validation failed', req, { 
+            error: error.message 
+        });
+        return false;
+    }
+};
+
 // Smart CSRF protection that bypasses for token-authenticated requests
-const smartCsrfProtection = (req, res, next) => {
+const smartCsrfProtection = async (req, res, next) => {
     // Skip CSRF protection if:
-    // 1. Request has Authorization header (Bearer token)
+    // 1. Request has valid Authorization header (Bearer token)
     // 2. Running in test environment
     // 3. Request method is safe (GET, HEAD, OPTIONS)
     const hasAuthHeader = req.headers.authorization && req.headers.authorization.startsWith('Bearer ');
     const isTestEnvironment = process.env.NODE_ENV === 'test';
     const isSafeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     
-    if (hasAuthHeader || isTestEnvironment || isSafeMethod) {
-        if (hasAuthHeader) {
-            logger.debug('CSRF bypassed for authenticated request', req, {
-                reason: 'Authorization header present',
-                path: req.path,
-                method: req.method
-            });
-        }
+    if (isTestEnvironment || isSafeMethod) {
         if (isTestEnvironment) {
             logger.debug('CSRF bypassed in test environment', req, {
                 reason: 'Test environment',
@@ -40,7 +150,28 @@ const smartCsrfProtection = (req, res, next) => {
         return next();
     }
     
-    // Apply CSRF protection for browser-based requests
+    if (hasAuthHeader) {
+        // Validate the Authorization header token before bypassing CSRF
+        const isValidToken = await validateAuthorizationToken(req);
+        if (isValidToken) {
+            logger.debug('CSRF bypassed for authenticated request', req, {
+                reason: 'Valid Authorization token',
+                path: req.path,
+                method: req.method
+            });
+            return next();
+        } else {
+            logger.security('CSRF_BYPASS_ATTEMPT', req, 'medium', {
+                reason: 'Invalid Authorization token',
+                path: req.path,
+                method: req.method,
+                userAgent: req.get('User-Agent'),
+                ip: req.ip
+            });
+        }
+    }
+    
+    // Apply CSRF protection for browser-based requests or invalid tokens
     return csrfProtection(req, res, next);
 };
 

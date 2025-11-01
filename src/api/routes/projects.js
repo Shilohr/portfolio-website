@@ -136,7 +136,8 @@ router.get('/', [
         let params = [finalStatus];
 
         if (featured === 'true') {
-            whereClause += ' AND p.featured = TRUE';
+            whereClause += ' AND p.featured = ?';
+            params.push(true);
         }
         
         // Optional user filtering (for admin use)
@@ -146,9 +147,12 @@ router.get('/', [
         }
         
         // Search functionality - search in title and description
+        let searchFilter = null;
         if (search && search.trim()) {
             const sanitizedSearch = sanitizers.sanitizeString(search, 100);
             if (sanitizedSearch) {
+                searchFilter = sanitizedSearch.toLowerCase();
+                // Note: LIKE clauses are only used in the main query, fallback uses JavaScript filtering
                 whereClause += ' AND (p.title LIKE ? OR p.description LIKE ?)';
                 const searchPattern = `%${sanitizedSearch}%`;
                 params.push(searchPattern, searchPattern);
@@ -181,16 +185,36 @@ router.get('/', [
             
             // Get basic projects without complex SQL features
             try {
+                // For fallback, remove LIKE clauses from whereClause and params
+                let fallbackWhereClause = whereClause;
+                let fallbackParams = [...params];
+                
+                if (searchFilter) {
+                    // Remove LIKE clauses for JSON adapter compatibility
+                    fallbackWhereClause = fallbackWhereClause.replace(/ AND \(p\.title LIKE \? OR p\.description LIKE \?\)/g, '');
+                    // Remove the search pattern parameters (last 2 params)
+                    fallbackParams = fallbackParams.slice(0, -2);
+                }
+                
                 [projects] = await db.execute(`
                     SELECT p.id, p.title, p.description, p.github_url, p.live_url, 
                            p.featured, p.order_index, p.status, p.created_at, p.updated_at, p.user_id,
                            u.username as owner_username
                     FROM projects p
                     LEFT JOIN users u ON p.user_id = u.id
-                    ${whereClause}
+                    ${fallbackWhereClause}
                     ORDER BY p.order_index ASC, p.created_at DESC
                     LIMIT ? OFFSET ?
-                `, [...params, limitNum, offset]);
+                `, [...fallbackParams, limitNum, offset]);
+                
+                // Apply search filtering in JavaScript for JSON adapter
+                if (searchFilter && Array.isArray(projects)) {
+                    projects = projects.filter(project => {
+                        const titleMatch = project.title && project.title.toLowerCase().includes(searchFilter);
+                        const descMatch = project.description && project.description.toLowerCase().includes(searchFilter);
+                        return titleMatch || descMatch;
+                    });
+                }
             } catch (fallbackError) {
                 logger.error('Fallback query also failed', req, { error: fallbackError.message });
                 projects = [];
@@ -198,11 +222,22 @@ router.get('/', [
 
             // Get total count separately
             try {
+                // Use same fallback logic for count query
+                let countWhereClause = whereClause;
+                let countParams = [...params];
+                
+                if (searchFilter) {
+                    // Remove LIKE clauses for JSON adapter compatibility
+                    countWhereClause = countWhereClause.replace(/ AND \(p\.title LIKE \? OR p\.description LIKE \?\)/g, '');
+                    // Remove the search pattern parameters (last 2 params)
+                    countParams = countParams.slice(0, -2);
+                }
+                
                 [totalCount] = await db.execute(`
                     SELECT COUNT(*) as total
                     FROM projects p
-                    ${whereClause}
-                `, params);
+                    ${countWhereClause}
+                `, countParams);
             } catch (countError) {
                 logger.error('Count query failed', req, { error: countError.message });
                 totalCount = [{ total: 0 }];
