@@ -483,6 +483,14 @@ return data;
             /CASE\s+WHEN/i
         ];
 
+        // Allow parentheses for grouping but check for unsupported constructs within them
+        const cleanWhereClause = whereClause.replace(/\([^)]*\)/g, '()'); // Replace parenthetical groups with placeholder
+        for (const pattern of unsupportedPatterns) {
+            if (pattern.test(cleanWhereClause)) {
+                throw new Error(`Unsupported SQL construct in WHERE clause: ${whereClause}`);
+            }
+        }
+
         for (const pattern of unsupportedPatterns) {
             if (pattern.test(whereClause)) {
                 throw new Error(`Unsupported SQL construct in WHERE clause: ${whereClause}`);
@@ -495,6 +503,11 @@ return data;
             throw new Error(`Parameter count mismatch. Expected ${placeholderCount}, got ${params.length}`);
         }
 
+        // Handle empty WHERE clause
+        if (!whereClause || whereClause.trim() === '') {
+            return data;
+        }
+
         return data.filter(record => {
             try {
                 // Handle basic equality conditions with AND/OR
@@ -503,10 +516,14 @@ return data;
                 return orConditions.some(orCondition => {
                     const andConditions = orCondition.split('AND').map(c => c.trim());
                     return andConditions.every(andCondition => {
+                        // Skip empty conditions
+                        if (!andCondition || andCondition.trim() === '') {
+                            return true;
+                        }
                         // Handle equality conditions
-                        const match = andCondition.match(/(\w+)\s*=\s*\?/i);
+                        const match = andCondition.match(/((?:\w+\.)?\w+)\s*=\s*\?/i);
                         if (match && params.length > 0) {
-                            const column = match[1];
+                            const column = match[1].split('.').pop(); // Strip table alias prefix
                             const paramIndex = this.getParamIndex(whereClause, andCondition);
                             if (paramIndex < 0 || paramIndex >= params.length) {
                                 throw new Error(`Invalid parameter index for condition: ${andCondition}`);
@@ -515,9 +532,9 @@ return data;
                         }
                         
                         // Handle greater than conditions (for expires_at > NOW())
-                        const greaterMatch = andCondition.match(/(\w+)\s*>\s*NOW\(\)/i);
+                        const greaterMatch = andCondition.match(/((?:\w+\.)?\w+)\s*>\s*NOW\(\)/i);
                         if (greaterMatch) {
-                            const column = greaterMatch[1];
+                            const column = greaterMatch[1].split('.').pop(); // Strip table alias prefix
                             const recordValue = record[column];
                             if (recordValue) {
                                 const expiresTime = new Date(recordValue).getTime();
@@ -528,22 +545,22 @@ return data;
                         }
                         
                         // Handle less than conditions (for expires_at < NOW())
-                        const lessMatch = andCondition.match(/(\w+)\s*<\s*NOW\(\)/i);
+                        const lessMatch = andCondition.match(/((?:\w+\.)?\w+)\s*<\s*NOW\(\)/i);
                         if (lessMatch) {
-                            const column = lessMatch[1];
+                            const column = lessMatch[1].split('.').pop(); // Strip table alias prefix
                             const recordValue = record[column];
-                            if (recordValue) {
-                                const expiresTime = new Date(recordValue).getTime();
-                                const nowTime = Date.now();
-                                return expiresTime < nowTime;
+                            if (recordValue === null || recordValue === undefined) {
+                                return false; // If no expires_at, don't consider it expired
                             }
-                            return true; // If no expires_at, consider it expired
+                            const expiresTime = new Date(recordValue).getTime();
+                            const nowTime = Date.now();
+                            return expiresTime < nowTime;
                         }
                         
                         // Handle boolean conditions (is_active = TRUE)
-                        const booleanMatch = andCondition.match(/(\w+)\s*=\s*(TRUE|FALSE)/i);
+                        const booleanMatch = andCondition.match(/((?:\w+\.)?\w+)\s*=\s*(TRUE|FALSE)/i);
                         if (booleanMatch) {
-                            const column = booleanMatch[1];
+                            const column = booleanMatch[1].split('.').pop(); // Strip table alias prefix
                             const expectedValue = booleanMatch[2].toUpperCase() === 'TRUE';
                             const recordValue = record[column];
                             // If field doesn't exist, default to TRUE for is_active
@@ -571,7 +588,25 @@ return data;
     getParamIndex(fullWhereClause, specificCondition) {
         // Find the parameter index for a specific condition within the full WHERE clause
         const conditions = fullWhereClause.split(/\s+(?:AND|OR)\s+/i);
-        return conditions.findIndex(c => c.trim() === specificCondition.trim());
+        let paramIndex = 0;
+        
+        for (let i = 0; i < conditions.length; i++) {
+            const condition = conditions[i].trim();
+            
+            // Check if this condition contains a parameter placeholder
+            if (condition.includes('?')) {
+                // Normalize both conditions by removing table aliases and extra whitespace
+                const normalizedCondition = condition.replace(/((?:\w+\.)?\w+)/g, '$1').replace(/\s+/g, ' ').trim();
+                const normalizedSpecific = specificCondition.replace(/((?:\w+\.)?\w+)/g, '$1').replace(/\s+/g, ' ').trim();
+                
+                if (normalizedCondition === normalizedSpecific) {
+                    return paramIndex;
+                }
+                paramIndex++;
+            }
+        }
+        
+        return -1; // Not found
     }
 
     applyOrderBy(data, orderClause) {

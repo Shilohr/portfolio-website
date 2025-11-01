@@ -31,7 +31,7 @@ describe('GitHub Integration Tests', () => {
                 is_active: true,
                 login_attempts: 0,
                 locked_until: null
-            }]]))
+            }]])
             .mockResolvedValueOnce([[{ // Session validation
                 id: 1,
                 token_hash: 'mocked_hash',
@@ -100,10 +100,10 @@ describe('GitHub Integration Tests', () => {
                     expect(githubUrlRegex.test(url.replace('.git', ''))).toBe(true);
                 });
 
-                invalidUrls.forEach(url => {
+invalidUrls.forEach(url => {
                     expect(githubUrlRegex.test(url)).toBe(false);
-});
-});
+                });
+            });
 
         describe('Rate Limiting Logic', () => {
             test('should calculate rate limit reset time correctly', () => {

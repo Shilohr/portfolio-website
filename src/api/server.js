@@ -18,6 +18,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../../config/.env') });
 
 const { cache } = require('./utils/cache');
 const { performanceMonitor, requestMonitor, monitorQuery } = require('./utils/performanceMonitor');
+
+// Cache for processed HTML templates to avoid repeated file I/O
+const htmlCache = new Map();
 const authRoutes = require('./routes/auth');
 const projectsRoutes = require('./routes/projects');
 const githubRoutes = require('./routes/github');
@@ -714,32 +717,41 @@ async function serveHtmlWithCSRF(req, res, htmlFile) {
     const path = require('path');
     
     try {
-        const filePath = path.join(__dirname, '../frontend', htmlFile);
-        let html = await fs.readFile(filePath, 'utf8');
-        
-        // Check if CSRF token meta tag exists, if not add it
-        if (!html.includes('csrf-token')) {
-            // Add CSRF token meta tag after other meta tags
-            const metaInsertPoint = html.indexOf('</head>');
-            if (metaInsertPoint !== -1) {
-                html = html.substring(0, metaInsertPoint) + 
-                    '    <meta name="csrf-token" id="csrf-token" content="">\n' + 
-                    html.substring(metaInsertPoint);
+        // Check if template is cached
+        if (!htmlCache.has(htmlFile)) {
+            const filePath = path.join(__dirname, '../frontend', htmlFile);
+            let html = await fs.readFile(filePath, 'utf8');
+            
+            // Check if CSRF token meta tag exists, if not add it
+            if (!html.includes('csrf-token')) {
+                // Add CSRF token meta tag after other meta tags
+                const metaInsertPoint = html.indexOf('</head>');
+                if (metaInsertPoint !== -1) {
+                    html = html.substring(0, metaInsertPoint) + 
+                        '    <meta name="csrf-token" id="csrf-token" content="">\n' + 
+                        html.substring(metaInsertPoint);
+                }
             }
+            
+            // Check if CSP nonce meta tag exists, if not add it
+            if (!html.includes('csp-nonce')) {
+                // Add CSP nonce meta tag after other meta tags
+                const metaInsertPoint = html.indexOf('</head>');
+                if (metaInsertPoint !== -1) {
+                    html = html.substring(0, metaInsertPoint) + 
+                        '    <meta name="csp-nonce" id="csp-nonce" content="">\n' + 
+                        html.substring(metaInsertPoint);
+                }
+            }
+            
+            // Cache the processed template
+            htmlCache.set(htmlFile, html);
         }
         
-        // Check if CSP nonce meta tag exists, if not add it
-        if (!html.includes('csp-nonce')) {
-            // Add CSP nonce meta tag after other meta tags
-            const metaInsertPoint = html.indexOf('</head>');
-            if (metaInsertPoint !== -1) {
-                html = html.substring(0, metaInsertPoint) + 
-                    '    <meta name="csp-nonce" id="csp-nonce" content="">\n' + 
-                    html.substring(metaInsertPoint);
-            }
-        }
+        // Get cached template
+        let html = htmlCache.get(htmlFile);
         
-        // Inject CSRF token into meta tag for frontend security
+        // Inject dynamic values (CSRF token and CSP nonce)
         const csrfToken = req.csrfToken();
         html = html.replace(
             '<meta name="csrf-token" id="csrf-token" content="">',
